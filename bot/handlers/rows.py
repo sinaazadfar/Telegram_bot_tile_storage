@@ -18,7 +18,7 @@ from ..config import (
     DEFAULT_METRIC,
     PROCESS_TIMEOUT,
     resolve_warehouse_input_path,
-    warehouse_template_path,
+    ensure_warehouse_template_path,
     warehouse_output_path,
 )
 from ..formatting import build_buttons_from_labels, build_label_map
@@ -62,7 +62,7 @@ async def regenerate_output(
         return
     input_path = resolve_warehouse_input_path(warehouse)
     output_path = warehouse_output_path(warehouse)
-    template_path = warehouse_template_path(warehouse)
+    template_path = ensure_warehouse_template_path(warehouse)
     if not input_path:
         await send_text(
             update,
@@ -71,7 +71,7 @@ async def regenerate_output(
         )
         context.user_data["menu_level"] = "manage_rows"
         return
-    if not template_path.exists():
+    if not template_path:
         await send_text(
             update,
             f"{note_prefix}\nتمپلیت پیدا نشد.",
@@ -200,7 +200,11 @@ async def add_row_confirm(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
         await send_text(update, "برای ادامه روی تایید بزنید یا برگشت کنید.")
         return STATE_CONFIRM
     row = context.user_data.get("new_row", {})
-    template_path = warehouse_template_path(context.user_data["warehouse"])
+    template_path = ensure_warehouse_template_path(context.user_data["warehouse"])
+    if not template_path:
+        await send_text(update, "?????? ???? ???.")
+        context.user_data["conversation_active"] = False
+        return ConversationHandler.END
     try:
         new_row = append_template_row(
             row["code"], row["name"], row["size"], row["divisor"], template_path
@@ -231,7 +235,11 @@ async def delete_row_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -
         context.user_data["menu_level"] = "main"
         return ConversationHandler.END
     context.user_data["conversation_active"] = True
-    template_path = warehouse_template_path(context.user_data["warehouse"])
+    template_path = ensure_warehouse_template_path(context.user_data["warehouse"])
+    if not template_path:
+        await send_text(update, "?????? ???? ???.")
+        context.user_data["conversation_active"] = False
+        return ConversationHandler.END
     try:
         matches = list_template_rows(template_path)
     except Exception:
@@ -251,7 +259,11 @@ async def delete_row_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -
 
 async def delete_row_list(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     text = (update.message.text or "").strip()
-    template_path = warehouse_template_path(context.user_data["warehouse"])
+    template_path = ensure_warehouse_template_path(context.user_data["warehouse"])
+    if not template_path:
+        await send_text(update, "?????? ???? ???.")
+        context.user_data["conversation_active"] = False
+        return ConversationHandler.END
     if text == BACK_TEXT:
         return await delete_row_cancel(update, context)
     label_map = context.user_data.get("delete_label_map", {})
@@ -302,7 +314,11 @@ async def delete_row_confirm(update: Update, context: ContextTypes.DEFAULT_TYPE)
         await send_text(update, "موردی برای حذف انتخاب نشده است.")
         context.user_data["conversation_active"] = False
         return ConversationHandler.END
-    template_path = warehouse_template_path(context.user_data["warehouse"])
+    template_path = ensure_warehouse_template_path(context.user_data["warehouse"])
+    if not template_path:
+        await send_text(update, "?????? ???? ???.")
+        context.user_data["conversation_active"] = False
+        return ConversationHandler.END
     try:
         deleted = delete_template_row(target, template_path)
     except Exception:
@@ -334,7 +350,11 @@ async def edit_row_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         context.user_data["menu_level"] = "main"
         return ConversationHandler.END
     context.user_data["conversation_active"] = True
-    template_path = warehouse_template_path(context.user_data["warehouse"])
+    template_path = ensure_warehouse_template_path(context.user_data["warehouse"])
+    if not template_path:
+        await send_text(update, "?????? ???? ???.")
+        context.user_data["conversation_active"] = False
+        return ConversationHandler.END
     try:
         matches = list_template_rows(template_path)
     except Exception:
@@ -354,7 +374,11 @@ async def edit_row_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
 
 async def edit_row_list(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     text = (update.message.text or "").strip()
-    template_path = warehouse_template_path(context.user_data["warehouse"])
+    template_path = ensure_warehouse_template_path(context.user_data["warehouse"])
+    if not template_path:
+        await send_text(update, "?????? ???? ???.")
+        context.user_data["conversation_active"] = False
+        return ConversationHandler.END
     if text == BACK_TEXT:
         return await edit_row_cancel(update, context)
     label_map = context.user_data.get("edit_label_map", {})
@@ -484,7 +508,11 @@ async def edit_row_confirm(update: Update, context: ContextTypes.DEFAULT_TYPE) -
         await send_text(update, "اطلاعات کافی نیست.")
         context.user_data["conversation_active"] = False
         return ConversationHandler.END
-    template_path = warehouse_template_path(context.user_data["warehouse"])
+    template_path = ensure_warehouse_template_path(context.user_data["warehouse"])
+    if not template_path:
+        await send_text(update, "?????? ???? ???.")
+        context.user_data["conversation_active"] = False
+        return ConversationHandler.END
     try:
         updated = update_template_row(original, new_vals, template_path)
     except Exception:

@@ -5,7 +5,7 @@ from io import BytesIO
 from telegram import InputFile, Update
 from telegram.ext import ConversationHandler, ContextTypes, MessageHandler, filters
 
-from ..config import warehouse_output_path, warehouse_template_path
+from ..config import ensure_warehouse_template_path, warehouse_output_path
 from ..formatting import build_buttons_from_labels, build_label_map, format_details
 from ..keyboards import keyboard_with_back, warehouse_menu_keyboard, main_keyboard
 from ..pdf_utils import render_pdf
@@ -77,7 +77,11 @@ async def details_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> i
         context.user_data["conversation_active"] = False
         return ConversationHandler.END
     context.user_data["conversation_active"] = True
-    template_path = warehouse_template_path(context.user_data["warehouse"])
+    template_path = ensure_warehouse_template_path(context.user_data["warehouse"])
+    if not template_path:
+        await send_text(update, "?????? ???? ???.", reply_markup=warehouse_menu_keyboard())
+        context.user_data["conversation_active"] = False
+        return ConversationHandler.END
     try:
         matches = list_template_rows(template_path)
     except Exception:
@@ -100,7 +104,11 @@ async def details_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> i
 
 async def details_list(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     text = (update.message.text or "").strip()
-    template_path = warehouse_template_path(context.user_data["warehouse"])
+    template_path = ensure_warehouse_template_path(context.user_data["warehouse"])
+    if not template_path:
+        await send_text(update, "?????? ???? ???.", reply_markup=warehouse_menu_keyboard())
+        context.user_data["conversation_active"] = False
+        return ConversationHandler.END
     if text == BACK_TEXT:
         await send_text(update, "به منوی انبار برگشتید.", reply_markup=warehouse_menu_keyboard())
         context.user_data["skip_back_once"] = True

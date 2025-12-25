@@ -16,7 +16,7 @@ from ..config import (
     DEFAULT_METRIC,
     ALLOWED_METRICS,
     PROCESS_TIMEOUT,
-    resolve_any_template_path,
+    ensure_warehouse_template_path,
 )
 from ..text import send_text
 
@@ -32,7 +32,7 @@ async def handle_document(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
     if not (filename.lower().endswith(".xlsx") or filename.lower().endswith(".pdf")):
         await send_text(update, "فقط فایل .xlsx یا .pdf ارسال کنید.")
         return
-    template_path = resolve_any_template_path()
+    template_path = ensure_warehouse_template_path(context.user_data["warehouse"])
     if not template_path:
         await send_text(update, "تمپلیت پیدا نشد.")
         return

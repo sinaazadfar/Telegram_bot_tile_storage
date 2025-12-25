@@ -1,6 +1,7 @@
 import os
 import sys
 from pathlib import Path
+from shutil import copy2
 from threading import Lock
 
 from dotenv import load_dotenv
@@ -12,6 +13,7 @@ if str(ROOT_DIR) not in sys.path:
 load_dotenv(ROOT_DIR / ".env")
 
 BOT_TOKEN = os.getenv("BOT_TOKEN")
+DEFAULT_METRIC = os.getenv("BOT_DEFAULT_METRIC", "physical")
 ALLOWED_METRICS = {"physical", "sellable", "reserved"}
 
 DATA_DIR = ROOT_DIR / "data"
@@ -44,6 +46,10 @@ def template_dir(key: str) -> Path:
     return path
 
 
+def warehouse_template_source_path(key: str) -> Path:
+    return template_dir(key) / "trmplate.xlsx"
+
+
 def warehouse_input_path(key: str, suffix: str = ".xlsx") -> Path:
     if not suffix.startswith("."):
         suffix = f".{suffix}"
@@ -51,7 +57,23 @@ def warehouse_input_path(key: str, suffix: str = ".xlsx") -> Path:
 
 
 def warehouse_template_path(key: str) -> Path:
-    return template_dir(key) / "trmplate.xlsx"
+    return warehouse_dir(key) / "template.xlsx"
+
+
+def ensure_warehouse_template_path(key: str) -> Path | None:
+    data_path = warehouse_template_path(key)
+    if data_path.exists():
+        return data_path
+    source_path = warehouse_template_source_path(key)
+    if not source_path.exists():
+        source_path = TEMPLATE_PATH if TEMPLATE_PATH.exists() else None
+    if not source_path:
+        return None
+    data_path.parent.mkdir(parents=True, exist_ok=True)
+    with TEMPLATE_LOCK:
+        if not data_path.exists():
+            copy2(source_path, data_path)
+    return data_path
 
 
 def resolve_warehouse_input_path(key: str) -> Path | None:
@@ -66,8 +88,13 @@ def resolve_warehouse_input_path(key: str) -> Path | None:
 
 
 def resolve_any_template_path() -> Path | None:
-    candidates = [TEMPLATE_PATH]
-    candidates.extend(warehouse_template_path(key) for key in WAREHOUSE_KEYS)
+    candidates: list[Path] = []
+    if TEMPLATE_PATH.exists():
+        candidates.append(TEMPLATE_PATH)
+    for key in WAREHOUSE_KEYS:
+        candidate = ensure_warehouse_template_path(key)
+        if candidate and candidate.exists():
+            candidates.append(candidate)
     existing = [path for path in candidates if path.exists()]
     if not existing:
         return None

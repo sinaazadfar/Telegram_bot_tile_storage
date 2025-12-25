@@ -19,7 +19,7 @@ from ..config import (
     PROCESS_TIMEOUT,
     warehouse_input_path,
     warehouse_output_path,
-    warehouse_template_path,
+    ensure_warehouse_template_path,
 )
 from ..keyboards import main_keyboard, products_menu_keyboard, warehouse_menu_keyboard
 from ..strings import (
@@ -81,8 +81,8 @@ async def products_receive_file(update: Update, context: ContextTypes.DEFAULT_TY
     if not (filename.lower().endswith(".xlsx") or filename.lower().endswith(".pdf")):
         await send_text(update, "فایل باید .xlsx یا .pdf باشد.")
         return STATE_PRODUCTS_WAIT_FILE
-    template_path = warehouse_template_path(context.user_data["warehouse"])
-    if not template_path.exists():
+    template_path = ensure_warehouse_template_path(context.user_data["warehouse"])
+    if not template_path:
         await send_text(update, "تمپلیت پیدا نشد.")
         context.user_data["conversation_active"] = False
         return ConversationHandler.END
