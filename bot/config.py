@@ -12,12 +12,11 @@ if str(ROOT_DIR) not in sys.path:
 load_dotenv(ROOT_DIR / ".env")
 
 BOT_TOKEN = os.getenv("BOT_TOKEN")
-DEFAULT_METRIC = os.getenv("BOT_DEFAULT_METRIC", "physical")
 ALLOWED_METRICS = {"physical", "sellable", "reserved"}
 
-TEMPLATE_PATH = ROOT_DIR / "template.xlsx"
 DATA_DIR = ROOT_DIR / "data"
 TEMPLATE_DIR = ROOT_DIR / "template"
+TEMPLATE_PATH = TEMPLATE_DIR / "template.xlsx"
 TEMPLATE_LOCK = Lock()
 WAREHOUSE_KEYS = ("fakhar", "dorin")
 
