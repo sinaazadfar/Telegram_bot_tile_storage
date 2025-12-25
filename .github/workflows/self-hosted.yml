@@ -1,0 +1,33 @@
+name: Build and Run Bot (Self-Hosted)
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+
+jobs:
+  build-and-run:
+    runs-on: self-hosted
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Build image
+        run: docker build -t telegram-bot-tile-storage:latest .
+
+      - name: Stop existing container
+        run: |
+          docker stop telegram-bot-tile-storage || true
+          docker rm telegram-bot-tile-storage || true
+
+      - name: Run container
+        env:
+          BOT_TOKEN: ${{ secrets.BOT_TOKEN }}
+        run: |
+          docker run -d \
+            --name telegram-bot-tile-storage \
+            --restart unless-stopped \
+            --env-file .env \
+            -e BOT_TOKEN="$BOT_TOKEN" \
+            telegram-bot-tile-storage:latest
