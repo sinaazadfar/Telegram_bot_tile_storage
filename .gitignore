@@ -2,3 +2,6 @@
 input.pdf
 input.xlsx
 output.xlsx
+data/**
+!data/**/
+!data/**/.gitkeep

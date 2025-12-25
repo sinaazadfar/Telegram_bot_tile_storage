@@ -17,6 +17,7 @@ ALLOWED_METRICS = {"physical", "sellable", "reserved"}
 
 TEMPLATE_PATH = ROOT_DIR / "template.xlsx"
 DATA_DIR = ROOT_DIR / "data"
+TEMPLATE_DIR = ROOT_DIR / "template"
 TEMPLATE_LOCK = Lock()
 WAREHOUSE_KEYS = ("fakhar", "dorin")
 
@@ -38,6 +39,12 @@ def warehouse_dir(key: str) -> Path:
     return path
 
 
+def template_dir(key: str) -> Path:
+    path = TEMPLATE_DIR / key
+    path.mkdir(parents=True, exist_ok=True)
+    return path
+
+
 def warehouse_input_path(key: str, suffix: str = ".xlsx") -> Path:
     if not suffix.startswith("."):
         suffix = f".{suffix}"
@@ -45,7 +52,7 @@ def warehouse_input_path(key: str, suffix: str = ".xlsx") -> Path:
 
 
 def warehouse_template_path(key: str) -> Path:
-    return warehouse_dir(key) / "template.xlsx"
+    return template_dir(key) / "trmplate.xlsx"
 
 
 def resolve_warehouse_input_path(key: str) -> Path | None:
