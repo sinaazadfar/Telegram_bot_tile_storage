@@ -21,6 +21,12 @@ jobs:
           docker stop telegram-bot-tile-storage || true
           docker rm telegram-bot-tile-storage || true
 
+      - name: Create .env
+        env:
+          BOT_TOKEN: ${{ secrets.BOT_TOKEN }}
+        run: |
+          printf "BOT_TOKEN=%s\n" "$BOT_TOKEN" > .env
+
       - name: Run container
         env:
           BOT_TOKEN: ${{ secrets.BOT_TOKEN }}
@@ -30,4 +36,5 @@ jobs:
             --restart unless-stopped \
             --env-file .env \
             -e BOT_TOKEN="$BOT_TOKEN" \
+            -v telegram-bot-tile-storage-data:/app/data \
             telegram-bot-tile-storage:latest
