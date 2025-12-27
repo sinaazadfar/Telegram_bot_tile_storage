@@ -22,12 +22,21 @@ def _shape_text(text: str) -> str:
 
 
 def _find_font_path() -> Path | None:
+    env_font = os.environ.get("BOT_PDF_FONT_PATH", "").strip()
+    if env_font:
+        env_path = Path(env_font)
+        if env_path.exists():
+            return env_path
     windows_dir = Path(os.environ.get("WINDIR", r"C:\Windows"))
     candidates = [
         windows_dir / "Fonts" / "Tahoma.ttf",
         windows_dir / "Fonts" / "tahoma.ttf",
         windows_dir / "Fonts" / "segoeui.ttf",
         windows_dir / "Fonts" / "arial.ttf",
+        Path("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf"),
+        Path("/usr/share/fonts/truetype/noto/NotoSansArabic-Regular.ttf"),
+        Path("/usr/share/fonts/truetype/noto/NotoNaskhArabic-Regular.ttf"),
+        Path("/usr/share/fonts/truetype/freefont/FreeSans.ttf"),
     ]
     for path in candidates:
         if path.exists():
