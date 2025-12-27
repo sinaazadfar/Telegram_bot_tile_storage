@@ -2,7 +2,7 @@ import logging
 import mimetypes
 from pathlib import Path
 
-from telegram import Update
+from telegram import InputMediaPhoto, Update
 from telegram.error import NetworkError, TimedOut
 from telegram.ext import (
     CommandHandler,
@@ -30,11 +30,10 @@ from ..keyboards import (
 from ..storage import find_template_matches_any, list_template_rows
 from ..strings import (
     BACK_TEXT,
-    CATALOG_CREATE_TEXT,
     CATALOG_DELETE_TEXT,
     CATALOG_DONE_TEXT,
-    CATALOG_EDIT_TEXT,
     CATALOG_MENU_TEXT,
+    CATALOG_UPSERT_TEXT,
     CONFIRM_TEXT,
 )
 from ..text import send_text
@@ -43,7 +42,6 @@ STATE_CATALOG_MENU = 0
 STATE_CATALOG_SELECT = 1
 STATE_CATALOG_UPLOAD = 2
 STATE_CATALOG_DELETE_CONFIRM = 3
-STATE_CATALOG_OVERWRITE_CONFIRM = 4
 
 
 async def catalogs_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
@@ -65,8 +63,7 @@ async def catalogs_menu(update: Update, context: ContextTypes.DEFAULT_TYPE) -> i
         context.user_data["conversation_active"] = False
         return ConversationHandler.END
     mode_map = {
-        CATALOG_CREATE_TEXT: "create",
-        CATALOG_EDIT_TEXT: "edit",
+        CATALOG_UPSERT_TEXT: "upsert",
         CATALOG_DELETE_TEXT: "delete",
     }
     mode = mode_map.get(text)
@@ -136,6 +133,22 @@ async def catalogs_select(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
     return STATE_CATALOG_SELECT
 
 
+async def send_existing_catalog(update: Update, images: list[Path]) -> None:
+    if not images or not update.message:
+        return
+    if len(images) == 1:
+        with images[0].open("rb") as handle:
+            await update.message.reply_photo(photo=handle)
+        return
+    handles = [path.open("rb") for path in images]
+    media = [InputMediaPhoto(handle) for handle in handles]
+    try:
+        await update.message.reply_media_group(media=media)
+    finally:
+        for handle in handles:
+            handle.close()
+
+
 async def handle_catalog_target(
     update: Update, context: ContextTypes.DEFAULT_TYPE, target: dict
 ) -> int:
@@ -150,15 +163,9 @@ async def handle_catalog_target(
         return STATE_CATALOG_DELETE_CONFIRM
     existing = list_catalog_images(context.user_data["warehouse"], target)
     existing_count = len(existing)
-    if mode == "create" and existing:
-        context.user_data["catalog_target"] = target
-        await send_text(
-            update,
-            "برای جایگزینی کاتالوگ قبلی تایید کنید.",
-            reply_markup=keyboard_with_back([[CONFIRM_TEXT]]),
-        )
-        return STATE_CATALOG_OVERWRITE_CONFIRM
-    if mode == "edit" and existing_count >= MAX_CATALOG_IMAGES:
+    if mode == "upsert" and existing:
+        await send_existing_catalog(update, existing)
+    if mode == "upsert" and existing_count >= MAX_CATALOG_IMAGES:
         await send_text(
             update,
             "حداکثر تعداد تصویر قبلا ثبت شده است.",
@@ -195,22 +202,6 @@ async def start_catalog_upload(
         reply_markup=keyboard_with_back([[CATALOG_DONE_TEXT]]),
     )
     return STATE_CATALOG_UPLOAD
-
-
-async def catalog_overwrite_confirm(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-    text = (update.message.text or "").strip()
-    if text == BACK_TEXT:
-        return await catalogs_cancel(update, context)
-    if text != CONFIRM_TEXT:
-        await send_text(update, "برای ادامه، تایید کنید.")
-        return STATE_CATALOG_OVERWRITE_CONFIRM
-    target = context.user_data.get("catalog_target")
-    if not target:
-        await send_text(update, "طرح انتخاب نشده است.", reply_markup=manage_menu_keyboard())
-        context.user_data["conversation_active"] = False
-        return ConversationHandler.END
-    clear_catalog(context.user_data["warehouse"], target)
-    return await start_catalog_upload(update, context, target)
 
 
 async def catalog_delete_confirm(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
@@ -338,9 +329,6 @@ def build_catalog_handler() -> ConversationHandler:
             ],
             STATE_CATALOG_SELECT: [
                 MessageHandler(filters.TEXT & ~filters.COMMAND, catalogs_select)
-            ],
-            STATE_CATALOG_OVERWRITE_CONFIRM: [
-                MessageHandler(filters.TEXT & ~filters.COMMAND, catalog_overwrite_confirm)
             ],
             STATE_CATALOG_DELETE_CONFIRM: [
                 MessageHandler(filters.TEXT & ~filters.COMMAND, catalog_delete_confirm)

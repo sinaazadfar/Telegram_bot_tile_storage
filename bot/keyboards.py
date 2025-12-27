@@ -3,10 +3,9 @@ from telegram import ReplyKeyboardMarkup
 from .strings import (
     ADD_ROW_TEXT,
     BACK_TEXT,
-    CATALOG_CREATE_TEXT,
     CATALOG_DELETE_TEXT,
-    CATALOG_EDIT_TEXT,
     CATALOG_MENU_TEXT,
+    CATALOG_UPSERT_TEXT,
     DELETE_ROW_TEXT,
     DETAILS_TEXT,
     EDIT_ROW_TEXT,
@@ -78,10 +77,9 @@ def products_menu_keyboard() -> ReplyKeyboardMarkup:
 def catalog_menu_keyboard() -> ReplyKeyboardMarkup:
     return ReplyKeyboardMarkup(
         [
-            [CATALOG_CREATE_TEXT], 
-            [CATALOG_EDIT_TEXT], 
+            [CATALOG_UPSERT_TEXT],
             [CATALOG_DELETE_TEXT],
-            [BACK_TEXT], 
+            [BACK_TEXT],
         ],
         resize_keyboard=True,
     )

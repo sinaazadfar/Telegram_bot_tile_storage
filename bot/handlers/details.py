@@ -20,7 +20,7 @@ from ..strings import (
     WAREHOUSE_LABELS,
 )
 from ..text import send_text
-from ..utils import format_jalali_date
+from ..utils import clean_text, format_jalali_date
 
 STATE_DETAILS_LIST = 0
 STATE_DETAILS_ACTION = 1
@@ -87,12 +87,28 @@ async def send_catalog_images(
         return False
     if not update.message:
         return False
+    name = clean_text(target.get("name_display", ""))
+    code = clean_text(target.get("code_display", ""))
+    caption_parts: list[str] = []
+    if name:
+        caption_parts.append(f"نام طرح: {name}")
+    if code:
+        caption_parts.append(f"کد طرح: {code}")
+    caption = "\n".join(caption_parts)
     if len(images) == 1:
         with images[0].open("rb") as handle:
-            await update.message.reply_photo(photo=handle)
+            if caption:
+                await update.message.reply_photo(photo=handle, caption=caption)
+            else:
+                await update.message.reply_photo(photo=handle)
         return True
     handles = [path.open("rb") for path in images]
-    media = [InputMediaPhoto(handle) for handle in handles]
+    media: list[InputMediaPhoto] = []
+    for index, handle in enumerate(handles):
+        if index == 0 and caption:
+            media.append(InputMediaPhoto(handle, caption=caption))
+        else:
+            media.append(InputMediaPhoto(handle))
     try:
         await update.message.reply_media_group(media=media)
     finally:

@@ -24,8 +24,7 @@ WAREHOUSE_LABELS = {
 WAREHOUSE_BY_LABEL = {label: key for key, label in WAREHOUSE_LABELS.items()}
 
 CATALOG_MENU_TEXT = "مدیریت کاتالوگ"
-CATALOG_CREATE_TEXT = "ایجاد کاتالوگ"
-CATALOG_EDIT_TEXT = "ویرایش کاتالوگ"
+CATALOG_UPSERT_TEXT = "افزودن/ویرایش کاتالوگ"
 CATALOG_DELETE_TEXT = "حذف کاتالوگ"
 CATALOG_DONE_TEXT = "اتمام بارگذاری"
 CATALOG_GET_TEXT = "دریافت کاتالوگ"
