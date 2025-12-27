@@ -3,7 +3,12 @@ import logging
 from telegram import Update
 from telegram.ext import ContextTypes
 
-from ..keyboards import main_keyboard, manage_rows_keyboard, warehouse_menu_keyboard
+from ..keyboards import (
+    main_keyboard,
+    manage_menu_keyboard,
+    manage_rows_keyboard,
+    warehouse_menu_keyboard,
+)
 from ..strings import WAREHOUSE_BY_LABEL
 from ..text import send_text
 
@@ -30,6 +35,10 @@ async def back_to_menu(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
         return
     level = context.user_data.get("menu_level")
     if level == "manage_rows":
+        await send_text(update, "به منوی تنظیمات برگشتید.", reply_markup=manage_menu_keyboard())
+        context.user_data["menu_level"] = "manage_menu"
+        return
+    if level == "manage_menu":
         await send_text(update, "به منوی انبار برگشتید.", reply_markup=warehouse_menu_keyboard())
         context.user_data["menu_level"] = "warehouse"
         return
@@ -48,6 +57,15 @@ async def manage_rows(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
         return
     await send_text(update, "مدیریت طرح‌ها:", reply_markup=manage_rows_keyboard())
     context.user_data["menu_level"] = "manage_rows"
+
+
+async def manage_menu(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    if not context.user_data.get("warehouse"):
+        await send_text(update, "اول انبار را انتخاب کنید.", reply_markup=main_keyboard())
+        context.user_data["menu_level"] = "main"
+        return
+    await send_text(update, "تنظیمات:", reply_markup=manage_menu_keyboard())
+    context.user_data["menu_level"] = "manage_menu"
 
 
 async def select_warehouse(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:

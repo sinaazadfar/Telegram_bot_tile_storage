@@ -2,6 +2,7 @@ WAREHOUSE_FAKHAR_TEXT = "انبار فخار"
 WAREHOUSE_DARIN_TEXT = "انبار درین"
 
 MANAGE_ROWS_TEXT = "مدیریت طرح ها"
+MANAGE_MENU_TEXT = "تنظیمات"
 DETAILS_TEXT = "جزئیات طرح"
 DETAILS_ALL_TEXT = "خروجی همه طرح‌ها"
 DETAILS_FILTERED_TEXT = "خروجی موارد فیلتر شده"
@@ -21,3 +22,10 @@ WAREHOUSE_LABELS = {
     "dorin": WAREHOUSE_DARIN_TEXT,
 }
 WAREHOUSE_BY_LABEL = {label: key for key, label in WAREHOUSE_LABELS.items()}
+
+CATALOG_MENU_TEXT = "مدیریت کاتالوگ"
+CATALOG_CREATE_TEXT = "ایجاد کاتالوگ"
+CATALOG_EDIT_TEXT = "ویرایش کاتالوگ"
+CATALOG_DELETE_TEXT = "حذف کاتالوگ"
+CATALOG_DONE_TEXT = "اتمام بارگذاری"
+CATALOG_GET_TEXT = "دریافت کاتالوگ"

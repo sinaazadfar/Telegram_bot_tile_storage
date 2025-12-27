@@ -21,7 +21,7 @@ from ..config import (
     warehouse_output_path,
     ensure_warehouse_template_path,
 )
-from ..keyboards import main_keyboard, products_menu_keyboard, warehouse_menu_keyboard
+from ..keyboards import main_keyboard, manage_menu_keyboard, products_menu_keyboard
 from ..strings import (
     BACK_TEXT,
     PRODUCTS_DOWNLOAD_TEXT,
@@ -39,6 +39,7 @@ async def products_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         context.user_data["conversation_active"] = False
         return ConversationHandler.END
     context.user_data["conversation_active"] = True
+    context.user_data["menu_level"] = "manage_menu"
     await send_text(update, "مدیریت فایل محصولات:", reply_markup=products_menu_keyboard())
     return STATE_PRODUCTS_MENU
 
@@ -46,7 +47,7 @@ async def products_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
 async def products_menu(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     text = (update.message.text or "").strip()
     if text == BACK_TEXT:
-        await send_text(update, "به منوی انبار برگشتید.", reply_markup=warehouse_menu_keyboard())
+        await send_text(update, "به منوی تنظیمات برگشتید.", reply_markup=manage_menu_keyboard())
         context.user_data["skip_back_once"] = True
         context.user_data["conversation_active"] = False
         return ConversationHandler.END

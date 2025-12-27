@@ -14,12 +14,14 @@ from .config import (
     UPDATES_POOL_SIZE,
     WRITE_TIMEOUT,
 )
+from .handlers.catalogs import build_catalog_handler
 from .handlers.details import build_details_handler
 from .handlers.documents import handle_document
 from .handlers.menu import (
     back_to_menu,
     error_handler,
     help_command,
+    manage_menu,
     manage_rows,
     select_warehouse,
     start,
@@ -31,10 +33,11 @@ from .handlers.rows import (
     build_edit_row_handler,
 )
 from .strings import (
-    BACK_TEXT,
+    MANAGE_MENU_TEXT,
     MANAGE_ROWS_TEXT,
     WAREHOUSE_DARIN_TEXT,
     WAREHOUSE_FAKHAR_TEXT,
+    BACK_TEXT,
 )
 
 
@@ -73,11 +76,15 @@ def main() -> None:
     app.add_handler(
         MessageHandler(filters.Regex(f"^{WAREHOUSE_DARIN_TEXT}$"), select_warehouse)
     )
+    app.add_handler(
+        MessageHandler(filters.Regex(f"^{MANAGE_MENU_TEXT}$"), manage_menu)
+    )
     app.add_handler(MessageHandler(filters.Regex(f"^{MANAGE_ROWS_TEXT}$"), manage_rows))
     app.add_handler(build_add_row_handler())
     app.add_handler(build_edit_row_handler())
     app.add_handler(build_delete_row_handler())
     app.add_handler(build_details_handler())
+    app.add_handler(build_catalog_handler())
     app.add_handler(build_products_handler())
     app.add_handler(MessageHandler(filters.Document.ALL, handle_document))
     app.add_error_handler(error_handler)

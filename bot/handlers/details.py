@@ -2,18 +2,20 @@ import logging
 from datetime import datetime
 from io import BytesIO
 
-from telegram import InputFile, Update
+from telegram import InputFile, InputMediaPhoto, Update
 from telegram.ext import ConversationHandler, ContextTypes, MessageHandler, filters
 
 from ..config import ensure_warehouse_template_path, warehouse_output_path
 from ..formatting import build_buttons_from_labels, build_label_map, format_details
-from ..keyboards import keyboard_with_back, warehouse_menu_keyboard, main_keyboard
+from ..keyboards import keyboard_with_back, main_keyboard, warehouse_menu_keyboard
+from ..catalogs import list_catalog_images
 from ..pdf_utils import render_pdf
 from ..storage import find_template_matches_any, get_output_row_details, list_template_rows
 from ..strings import (
     BACK_TEXT,
     DETAILS_TEXT,
     DETAILS_ALL_TEXT,
+    CATALOG_GET_TEXT,
     DETAILS_FILTERED_TEXT,
     WAREHOUSE_LABELS,
 )
@@ -21,6 +23,7 @@ from ..text import send_text
 from ..utils import format_jalali_date
 
 STATE_DETAILS_LIST = 0
+STATE_DETAILS_ACTION = 1
 
 
 async def send_details_report(
@@ -71,12 +74,40 @@ async def send_details_report(
     return ConversationHandler.END
 
 
+async def send_catalog_images(
+    update: Update, context: ContextTypes.DEFAULT_TYPE, target: dict
+) -> bool:
+    warehouse_key = context.user_data.get("warehouse")
+    if not warehouse_key:
+        await send_text(update, "اول انبار را انتخاب کنید.", reply_markup=main_keyboard())
+        return False
+    images = list_catalog_images(warehouse_key, target)
+    if not images:
+        await send_text(update, "کاتالوگی برای این طرح پیدا نشد.", reply_markup=warehouse_menu_keyboard())
+        return False
+    if not update.message:
+        return False
+    if len(images) == 1:
+        with images[0].open("rb") as handle:
+            await update.message.reply_photo(photo=handle)
+        return True
+    handles = [path.open("rb") for path in images]
+    media = [InputMediaPhoto(handle) for handle in handles]
+    try:
+        await update.message.reply_media_group(media=media)
+    finally:
+        for handle in handles:
+            handle.close()
+    return True
+
+
 async def details_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     if not context.user_data.get("warehouse"):
         await send_text(update, "اول انبار را انتخاب کنید.", reply_markup=main_keyboard())
         context.user_data["conversation_active"] = False
         return ConversationHandler.END
     context.user_data["conversation_active"] = True
+    context.user_data["menu_level"] = "warehouse"
     template_path = ensure_warehouse_template_path(context.user_data["warehouse"])
     if not template_path:
         await send_text(update, "?????? ???? ???.", reply_markup=warehouse_menu_keyboard())
@@ -216,11 +247,15 @@ async def details_list(update: Update, context: ContextTypes.DEFAULT_TYPE) -> in
         await send_text(
             update,
             format_details(details),
-            reply_markup=warehouse_menu_keyboard(),
             parse_mode="HTML",
         )
-        context.user_data["conversation_active"] = False
-        return ConversationHandler.END
+        context.user_data["details_selected_row"] = target
+        await send_text(
+            update,
+            "برای دریافت کاتالوگ، دکمه زیر را بزنید.",
+            reply_markup=keyboard_with_back([[CATALOG_GET_TEXT]]),
+        )
+        return STATE_DETAILS_ACTION
     try:
         matches = find_template_matches_any(text, template_path)
     except Exception:
@@ -245,6 +280,32 @@ async def details_list(update: Update, context: ContextTypes.DEFAULT_TYPE) -> in
     return STATE_DETAILS_LIST
 
 
+async def details_action(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    text = (update.message.text or "").strip()
+    if text == BACK_TEXT:
+        await send_text(update, "به منوی انبار برگشتید.", reply_markup=warehouse_menu_keyboard())
+        context.user_data["skip_back_once"] = True
+        context.user_data["conversation_active"] = False
+        return ConversationHandler.END
+    if text != CATALOG_GET_TEXT:
+        await send_text(
+            update,
+            "یکی از گزینه‌ها را انتخاب کنید.",
+            reply_markup=keyboard_with_back([[CATALOG_GET_TEXT]]),
+        )
+        return STATE_DETAILS_ACTION
+    target = context.user_data.get("details_selected_row")
+    if not target:
+        await send_text(update, "طرحی انتخاب نشده است.", reply_markup=warehouse_menu_keyboard())
+        context.user_data["conversation_active"] = False
+        return ConversationHandler.END
+    sent = await send_catalog_images(update, context, target)
+    if sent:
+        await send_text(update, "کاتالوگ ارسال شد.", reply_markup=warehouse_menu_keyboard())
+    context.user_data["conversation_active"] = False
+    return ConversationHandler.END
+
+
 def build_details_handler() -> ConversationHandler:
     return ConversationHandler(
         entry_points=[
@@ -253,6 +314,9 @@ def build_details_handler() -> ConversationHandler:
         states={
             STATE_DETAILS_LIST: [
                 MessageHandler(filters.TEXT & ~filters.COMMAND, details_list)
+            ],
+            STATE_DETAILS_ACTION: [
+                MessageHandler(filters.TEXT & ~filters.COMMAND, details_action)
             ],
         },
         fallbacks=[],
