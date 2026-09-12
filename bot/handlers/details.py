@@ -1,5 +1,6 @@
 import logging
 from datetime import datetime
+from decimal import Decimal, InvalidOperation
 from io import BytesIO
 
 from telegram import InputFile, InputMediaPhoto, Update
@@ -10,8 +11,13 @@ from ..formatting import build_buttons_from_labels, build_label_map, format_deta
 from ..keyboards import keyboard_with_back, main_keyboard, warehouse_menu_keyboard
 from ..catalogs import list_catalog_images
 from ..pdf_utils import render_pdf
-from ..storage import find_template_matches_any, get_output_row_details, list_template_rows
+from ..storage import (
+    find_template_matches_any,
+    get_output_row_details,
+    list_template_rows,
+)
 from ..strings import (
+    AVAILABLE_CATALOGS_TEXT,
     BACK_TEXT,
     DETAILS_TEXT,
     DETAILS_ALL_TEXT,
@@ -20,11 +26,63 @@ from ..strings import (
     WAREHOUSE_LABELS,
 )
 from ..text import send_text
-from ..utils import clean_text, format_jalali_date
+from ..utils import (
+    clean_text,
+    format_jalali_date,
+    normalize_digits,
+    normalize_query,
+    split_meter_pallet,
+)
 from ..auth import is_admin
 
 STATE_DETAILS_LIST = 0
 STATE_DETAILS_ACTION = 1
+SELLABLE_TOTAL_HEADER = normalize_query("مجموع طرح (قابل فروش)")
+
+
+def details_menu_buttons(
+    output_button: str, label_map: dict[str, list[dict]]
+) -> list[list[str]]:
+    return [
+        [output_button, AVAILABLE_CATALOGS_TEXT],
+        *build_buttons_from_labels(label_map),
+    ]
+
+
+def sellable_total(
+    details: list[tuple[str, str]], *, positive_only: bool = False
+) -> tuple[str, str | None] | None:
+    for header, value in details:
+        if normalize_query(header) != SELLABLE_TOTAL_HEADER:
+            continue
+        meter, pallet = split_meter_pallet(value)
+        if not meter:
+            return None
+        try:
+            amount = Decimal(normalize_digits(meter).replace(",", ""))
+        except InvalidOperation:
+            return None
+        if amount < 0 or (positive_only and amount == 0):
+            return None
+        return meter, pallet
+    return None
+
+
+def catalog_caption(target: dict, total: tuple[str, str | None] | None = None) -> str:
+    name = clean_text(target.get("name_display", ""))
+    code = clean_text(target.get("code_display", ""))
+    caption_parts: list[str] = []
+    if name:
+        caption_parts.append(f"نام طرح: {name}")
+    if code:
+        caption_parts.append(f"کد طرح: {code}")
+    if total:
+        meter, pallet = total
+        amount = f"{meter} متر مربع"
+        if pallet:
+            amount += f" ({pallet} پالت)"
+        caption_parts.append(f"موجودی قابل فروش: {amount}")
+    return "\n".join(caption_parts)
 
 
 async def send_details_report(
@@ -49,7 +107,11 @@ async def send_details_report(
         sections.append(format_details(details, use_html=False))
         sections.append("\n\n" + ("=" * 50) + "\n\n")
     if not sent_any:
-        await send_text(update, "جزئیاتی پیدا نشد.", reply_markup=warehouse_menu_keyboard(is_admin(update)))
+        await send_text(
+            update,
+            "جزئیاتی پیدا نشد.",
+            reply_markup=warehouse_menu_keyboard(is_admin(update)),
+        )
         context.user_data["conversation_active"] = False
         return ConversationHandler.END
     content = "".join(sections).strip()
@@ -59,43 +121,51 @@ async def send_details_report(
         pdf_bytes = render_pdf(content)
     except Exception:
         logging.exception("Failed to build details PDF.")
-        await send_text(update, "ساخت فایل PDF انجام نشد.", reply_markup=warehouse_menu_keyboard(is_admin(update)))
+        await send_text(
+            update,
+            "ساخت فایل PDF انجام نشد.",
+            reply_markup=warehouse_menu_keyboard(is_admin(update)),
+        )
         context.user_data["conversation_active"] = False
         return ConversationHandler.END
     buffer = BytesIO(pdf_bytes)
     buffer.seek(0)
     warehouse_key = context.user_data.get("warehouse", "warehouse")
-    warehouse_label = WAREHOUSE_LABELS.get(warehouse_key, warehouse_key).replace(" ", "_")
+    warehouse_label = WAREHOUSE_LABELS.get(warehouse_key, warehouse_key).replace(
+        " ", "_"
+    )
     date_stamp = format_jalali_date(datetime.now().date())
     filename = f"{warehouse_label}_{date_stamp}.pdf"
-    await update.message.reply_document(
-        document=InputFile(buffer, filename=filename)
-    )
+    await update.message.reply_document(document=InputFile(buffer, filename=filename))
     context.user_data["conversation_active"] = False
     return ConversationHandler.END
 
 
 async def send_catalog_images(
-    update: Update, context: ContextTypes.DEFAULT_TYPE, target: dict
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE,
+    target: dict,
+    total: tuple[str, str | None] | None = None,
+    notify_missing: bool = True,
 ) -> bool:
     warehouse_key = context.user_data.get("warehouse")
     if not warehouse_key:
-        await send_text(update, "اول انبار را انتخاب کنید.", reply_markup=main_keyboard())
+        await send_text(
+            update, "اول انبار را انتخاب کنید.", reply_markup=main_keyboard()
+        )
         return False
     images = list_catalog_images(warehouse_key, target)
     if not images:
-        await send_text(update, "کاتالوگی برای این طرح پیدا نشد.", reply_markup=warehouse_menu_keyboard(is_admin(update)))
+        if notify_missing:
+            await send_text(
+                update,
+                "کاتالوگی برای این طرح پیدا نشد.",
+                reply_markup=warehouse_menu_keyboard(is_admin(update)),
+            )
         return False
     if not update.message:
         return False
-    name = clean_text(target.get("name_display", ""))
-    code = clean_text(target.get("code_display", ""))
-    caption_parts: list[str] = []
-    if name:
-        caption_parts.append(f"نام طرح: {name}")
-    if code:
-        caption_parts.append(f"کد طرح: {code}")
-    caption = "\n".join(caption_parts)
+    caption = catalog_caption(target, total)
     if len(images) == 1:
         with images[0].open("rb") as handle:
             if caption:
@@ -118,16 +188,67 @@ async def send_catalog_images(
     return True
 
 
+async def send_available_catalogs(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE,
+    rows: list[dict],
+    output_path,
+) -> int:
+    eligible_count = 0
+    sent_count = 0
+    missing_count = 0
+    for row in rows:
+        details = get_output_row_details(row, output_path)
+        total = sellable_total(details, positive_only=True)
+        if total is None:
+            continue
+        eligible_count += 1
+        sent = await send_catalog_images(
+            update,
+            context,
+            row,
+            total=total,
+            notify_missing=False,
+        )
+        if sent:
+            sent_count += 1
+        else:
+            missing_count += 1
+
+    if sent_count == 0:
+        if eligible_count == 0:
+            message = "طرحی با موجودی قابل فروش پیدا نشد."
+        else:
+            message = "برای طرح‌های دارای موجودی قابل فروش، کاتالوگی پیدا نشد."
+    else:
+        message = f"کاتالوگ {sent_count} طرح ارسال شد."
+        if missing_count:
+            message += f"\nبرای {missing_count} طرح موجود، کاتالوگی ثبت نشده است."
+    await send_text(
+        update,
+        message,
+        reply_markup=warehouse_menu_keyboard(is_admin(update)),
+    )
+    context.user_data["conversation_active"] = False
+    return ConversationHandler.END
+
+
 async def details_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     if not context.user_data.get("warehouse"):
-        await send_text(update, "اول انبار را انتخاب کنید.", reply_markup=main_keyboard())
+        await send_text(
+            update, "اول انبار را انتخاب کنید.", reply_markup=main_keyboard()
+        )
         context.user_data["conversation_active"] = False
         return ConversationHandler.END
     context.user_data["conversation_active"] = True
     context.user_data["menu_level"] = "warehouse"
     template_path = ensure_warehouse_template_path(context.user_data["warehouse"])
     if not template_path:
-        await send_text(update, "?????? ???? ???.", reply_markup=warehouse_menu_keyboard(is_admin(update)))
+        await send_text(
+            update,
+            "?????? ???? ???.",
+            reply_markup=warehouse_menu_keyboard(is_admin(update)),
+        )
         context.user_data["conversation_active"] = False
         return ConversationHandler.END
     try:
@@ -138,10 +259,10 @@ async def details_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> i
         context.user_data["conversation_active"] = False
         return ConversationHandler.END
     context.user_data["details_label_map"] = build_label_map(matches)
-    buttons = [
-        [DETAILS_ALL_TEXT],
-        *build_buttons_from_labels(context.user_data["details_label_map"]),
-    ]
+    context.user_data["details_catalog_rows"] = matches
+    buttons = details_menu_buttons(
+        DETAILS_ALL_TEXT, context.user_data["details_label_map"]
+    )
     await send_text(
         update,
         "لیست طرح‌ها. برای جستجو متن وارد کنید یا یکی را انتخاب کنید:",
@@ -154,18 +275,30 @@ async def details_list(update: Update, context: ContextTypes.DEFAULT_TYPE) -> in
     text = (update.message.text or "").strip()
     template_path = ensure_warehouse_template_path(context.user_data["warehouse"])
     if not template_path:
-        await send_text(update, "?????? ???? ???.", reply_markup=warehouse_menu_keyboard(is_admin(update)))
+        await send_text(
+            update,
+            "?????? ???? ???.",
+            reply_markup=warehouse_menu_keyboard(is_admin(update)),
+        )
         context.user_data["conversation_active"] = False
         return ConversationHandler.END
     if text == BACK_TEXT:
-        await send_text(update, "به منوی انبار برگشتید.", reply_markup=warehouse_menu_keyboard(is_admin(update)))
+        await send_text(
+            update,
+            "به منوی انبار برگشتید.",
+            reply_markup=warehouse_menu_keyboard(is_admin(update)),
+        )
         context.user_data["skip_back_once"] = True
         context.user_data["conversation_active"] = False
         return ConversationHandler.END
     if text == DETAILS_ALL_TEXT:
         output_path = warehouse_output_path(context.user_data["warehouse"])
         if not output_path.exists():
-            await send_text(update, "فایل خروجی پیدا نشد.", reply_markup=warehouse_menu_keyboard(is_admin(update)))
+            await send_text(
+                update,
+                "فایل خروجی پیدا نشد.",
+                reply_markup=warehouse_menu_keyboard(is_admin(update)),
+            )
             context.user_data["conversation_active"] = False
             return ConversationHandler.END
         try:
@@ -180,85 +313,81 @@ async def details_list(update: Update, context: ContextTypes.DEFAULT_TYPE) -> in
         output_path = warehouse_output_path(context.user_data["warehouse"])
         filtered_rows = context.user_data.get("details_filtered_rows") or []
         if not filtered_rows:
-            await send_text(update, "ابتدا جستجو کنید.", reply_markup=warehouse_menu_keyboard(is_admin(update)))
-            context.user_data["conversation_active"] = False
-            return ConversationHandler.END
-        if not output_path.exists():
-            await send_text(update, "فایل خروجی پیدا نشد.", reply_markup=warehouse_menu_keyboard(is_admin(update)))
-            context.user_data["conversation_active"] = False
-            return ConversationHandler.END
-        return await send_details_report(update, context, filtered_rows, output_path, None)
-    if text == DETAILS_ALL_TEXT:
-        output_path = warehouse_output_path(context.user_data["warehouse"])
-        if not output_path.exists():
-            await send_text(update, "فایل خروجی پیدا نشد.", reply_markup=warehouse_menu_keyboard(is_admin(update)))
-            context.user_data["conversation_active"] = False
-            return ConversationHandler.END
-        try:
-            rows = list_template_rows(template_path)
-        except Exception:
-            logging.exception("Failed to list template rows.")
-            await send_text(update, "لیست طرح‌ها قابل دریافت نیست.")
-            context.user_data["conversation_active"] = False
-            return ConversationHandler.END
-        sections: list[str] = []
-        sent_any = False
-        for row in rows:
-            details = get_output_row_details(row, output_path)
-            if not details:
-                continue
             await send_text(
                 update,
-                format_details(details),
-                parse_mode="HTML",
+                "ابتدا جستجو کنید.",
+                reply_markup=warehouse_menu_keyboard(is_admin(update)),
             )
-            sent_any = True
-            sections.append(format_details(details, use_html=False))
-            sections.append("\n\n" + ("=" * 50) + "\n\n")
-        if not sent_any:
-            await send_text(update, "جزئیاتی پیدا نشد.", reply_markup=warehouse_menu_keyboard(is_admin(update)))
             context.user_data["conversation_active"] = False
             return ConversationHandler.END
-        content = "".join(sections).strip()
-        await send_text(update, "در حال ساخت فایل تمام طرح‌ها در یک PDF...")
-        try:
-            pdf_bytes = render_pdf(content)
-        except Exception:
-            logging.exception("Failed to build details PDF.")
-            await send_text(update, "ساخت فایل PDF انجام نشد.", reply_markup=warehouse_menu_keyboard(is_admin(update)))
+        if not output_path.exists():
+            await send_text(
+                update,
+                "فایل خروجی پیدا نشد.",
+                reply_markup=warehouse_menu_keyboard(is_admin(update)),
+            )
             context.user_data["conversation_active"] = False
             return ConversationHandler.END
-        buffer = BytesIO(pdf_bytes)
-        buffer.seek(0)
-        warehouse_key = context.user_data.get("warehouse", "warehouse")
-        date_stamp = datetime.now().strftime("%Y%m%d")
-        filename = f"details_{warehouse_key}_{date_stamp}.pdf"
-        await update.message.reply_document(
-            document=InputFile(buffer, filename=filename)
+        return await send_details_report(
+            update, context, filtered_rows, output_path, None
         )
-        context.user_data["conversation_active"] = False
-        return ConversationHandler.END
+    if text == AVAILABLE_CATALOGS_TEXT:
+        output_path = warehouse_output_path(context.user_data["warehouse"])
+        if not output_path.exists():
+            await send_text(
+                update,
+                "فایل خروجی پیدا نشد.",
+                reply_markup=warehouse_menu_keyboard(is_admin(update)),
+            )
+            context.user_data["conversation_active"] = False
+            return ConversationHandler.END
+        try:
+            rows = context.user_data.get("details_catalog_rows") or []
+            return await send_available_catalogs(update, context, rows, output_path)
+        except Exception:
+            logging.exception("Failed to send available catalogs.")
+            await send_text(
+                update,
+                "ارسال کاتالوگ‌ها انجام نشد.",
+                reply_markup=warehouse_menu_keyboard(is_admin(update)),
+            )
+            context.user_data["conversation_active"] = False
+            return ConversationHandler.END
     label_map = context.user_data.get("details_label_map", {})
     if text in label_map:
         rows = label_map[text]
         if len(rows) > 1:
-            await send_text(update, "چند مورد با این عنوان وجود دارد. متن دقیق‌تری وارد کنید.")
+            await send_text(
+                update, "چند مورد با این عنوان وجود دارد. متن دقیق‌تری وارد کنید."
+            )
             return STATE_DETAILS_LIST
         target = rows[0]
         output_path = warehouse_output_path(context.user_data["warehouse"])
         try:
             details = get_output_row_details(target, output_path)
         except FileNotFoundError:
-            await send_text(update, "فایل خروجی پیدا نشد.", reply_markup=warehouse_menu_keyboard(is_admin(update)))
+            await send_text(
+                update,
+                "فایل خروجی پیدا نشد.",
+                reply_markup=warehouse_menu_keyboard(is_admin(update)),
+            )
             context.user_data["conversation_active"] = False
             return ConversationHandler.END
         except Exception:
             logging.exception("Failed to read output file.")
-            await send_text(update, "خواندن جزئیات ممکن نیست.", reply_markup=warehouse_menu_keyboard(is_admin(update)))
+            await send_text(
+                update,
+                "خواندن جزئیات ممکن نیست.",
+                reply_markup=warehouse_menu_keyboard(is_admin(update)),
+            )
             context.user_data["conversation_active"] = False
             return ConversationHandler.END
         if not details:
-            await send_text(update, "جزئیاتی پیدا نشد.", reply_markup=warehouse_menu_keyboard(is_admin(update)))
+            await send_text(
+                update,
+                "جزئیاتی پیدا نشد.",
+                reply_markup=warehouse_menu_keyboard(is_admin(update)),
+            )
             context.user_data["conversation_active"] = False
             return ConversationHandler.END
         await send_text(
@@ -285,10 +414,8 @@ async def details_list(update: Update, context: ContextTypes.DEFAULT_TYPE) -> in
     label_map = build_label_map(matches)
     context.user_data["details_label_map"] = label_map
     context.user_data["details_filtered_rows"] = matches
-    buttons = [
-        [DETAILS_FILTERED_TEXT],
-        *build_buttons_from_labels(label_map),
-    ]
+    context.user_data["details_catalog_rows"] = matches
+    buttons = details_menu_buttons(DETAILS_FILTERED_TEXT, label_map)
     await send_text(
         update,
         "نتیجه جستجو. یکی را انتخاب کنید:",
@@ -300,7 +427,11 @@ async def details_list(update: Update, context: ContextTypes.DEFAULT_TYPE) -> in
 async def details_action(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     text = (update.message.text or "").strip()
     if text == BACK_TEXT:
-        await send_text(update, "به منوی انبار برگشتید.", reply_markup=warehouse_menu_keyboard(is_admin(update)))
+        await send_text(
+            update,
+            "به منوی انبار برگشتید.",
+            reply_markup=warehouse_menu_keyboard(is_admin(update)),
+        )
         context.user_data["skip_back_once"] = True
         context.user_data["conversation_active"] = False
         return ConversationHandler.END
@@ -313,12 +444,25 @@ async def details_action(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         return STATE_DETAILS_ACTION
     target = context.user_data.get("details_selected_row")
     if not target:
-        await send_text(update, "طرحی انتخاب نشده است.", reply_markup=warehouse_menu_keyboard(is_admin(update)))
+        await send_text(
+            update,
+            "طرحی انتخاب نشده است.",
+            reply_markup=warehouse_menu_keyboard(is_admin(update)),
+        )
         context.user_data["conversation_active"] = False
         return ConversationHandler.END
-    sent = await send_catalog_images(update, context, target)
+    output_path = warehouse_output_path(context.user_data["warehouse"])
+    try:
+        total = sellable_total(get_output_row_details(target, output_path))
+    except FileNotFoundError:
+        total = None
+    sent = await send_catalog_images(update, context, target, total=total)
     if sent:
-        await send_text(update, "کاتالوگ ارسال شد.", reply_markup=warehouse_menu_keyboard(is_admin(update)))
+        await send_text(
+            update,
+            "کاتالوگ ارسال شد.",
+            reply_markup=warehouse_menu_keyboard(is_admin(update)),
+        )
     context.user_data["conversation_active"] = False
     return ConversationHandler.END
 
