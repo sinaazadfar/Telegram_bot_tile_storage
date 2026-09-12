@@ -32,6 +32,7 @@ from ..storage import (
 )
 from ..strings import ADD_ROW_TEXT, BACK_TEXT, CONFIRM_TEXT, DELETE_ROW_TEXT, EDIT_ROW_TEXT
 from ..text import send_text
+from ..auth import is_admin
 
 STATE_CODE, STATE_NAME, STATE_SIZE, STATE_DIVISOR, STATE_CONFIRM = range(5)
 STATE_DEL_LIST, STATE_DEL_CONFIRM = range(5, 7)
@@ -121,6 +122,9 @@ async def regenerate_output(
 
 
 async def add_row_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    if not is_admin(update):
+        await send_text(update, "شما فقط دسترسی مشاهده دارید.")
+        return ConversationHandler.END
     if not context.user_data.get("warehouse"):
         await send_text(update, "اول انبار را انتخاب کنید.", reply_markup=main_keyboard())
         context.user_data["menu_level"] = "main"
@@ -230,6 +234,9 @@ async def add_row_cancel(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
 
 
 async def delete_row_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    if not is_admin(update):
+        await send_text(update, "شما فقط دسترسی مشاهده دارید.")
+        return ConversationHandler.END
     if not context.user_data.get("warehouse"):
         await send_text(update, "اول انبار را انتخاب کنید.", reply_markup=main_keyboard())
         context.user_data["menu_level"] = "main"
@@ -345,6 +352,9 @@ async def delete_row_cancel(update: Update, context: ContextTypes.DEFAULT_TYPE) 
 
 
 async def edit_row_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    if not is_admin(update):
+        await send_text(update, "شما فقط دسترسی مشاهده دارید.")
+        return ConversationHandler.END
     if not context.user_data.get("warehouse"):
         await send_text(update, "اول انبار را انتخاب کنید.", reply_markup=main_keyboard())
         context.user_data["menu_level"] = "main"

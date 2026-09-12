@@ -21,6 +21,8 @@ from .handlers.menu import (
     back_to_menu,
     error_handler,
     help_command,
+    add_admin_command,
+    user_id_command,
     manage_menu,
     manage_rows,
     select_warehouse,
@@ -70,6 +72,8 @@ def main() -> None:
     )
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("help", help_command))
+    app.add_handler(CommandHandler("userid", user_id_command))
+    app.add_handler(CommandHandler("addadmin", add_admin_command))
     app.add_handler(
         MessageHandler(filters.Regex(f"^{WAREHOUSE_FAKHAR_TEXT}$"), select_warehouse)
     )

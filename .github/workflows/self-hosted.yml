@@ -24,8 +24,12 @@ jobs:
       - name: Create .env
         env:
           BOT_TOKEN: ${{ secrets.BOT_TOKEN }}
+          BOT_DEFAULT_METRIC: physical
+          BOT_ADMIN_IDS: "252486544"
         run: |
           printf "BOT_TOKEN=%s\n" "$BOT_TOKEN" > .env
+          printf "BOT_DEFAULT_METRIC=%s\n" "$BOT_DEFAULT_METRIC" >> .env
+          printf "BOT_ADMIN_IDS=%s\n" "$BOT_ADMIN_IDS" >> .env
           printf "BOT_PDF_FONT_PATH=%s\n" "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf" >> .env
 
       - name: Run container

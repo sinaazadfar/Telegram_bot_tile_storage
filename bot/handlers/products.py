@@ -29,11 +29,15 @@ from ..strings import (
     PRODUCTS_UPLOAD_TEXT,
 )
 from ..text import send_text
+from ..auth import is_admin
 
 STATE_PRODUCTS_MENU, STATE_PRODUCTS_WAIT_FILE = range(2)
 
 
 async def products_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    if not is_admin(update):
+        await send_text(update, "شما فقط دسترسی مشاهده دارید.")
+        return ConversationHandler.END
     if not context.user_data.get("warehouse"):
         await send_text(update, "اول انبار را انتخاب کنید.", reply_markup=main_keyboard())
         context.user_data["conversation_active"] = False

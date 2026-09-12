@@ -17,10 +17,23 @@ DEFAULT_METRIC = os.getenv("BOT_DEFAULT_METRIC", "physical")
 ALLOWED_METRICS = {"physical", "sellable", "reserved"}
 
 DATA_DIR = ROOT_DIR / "data"
+ADMINS_PATH = DATA_DIR / "admins.json"
 TEMPLATE_DIR = ROOT_DIR / "template"
 TEMPLATE_PATH = TEMPLATE_DIR / "template.xlsx"
 TEMPLATE_LOCK = Lock()
 WAREHOUSE_KEYS = ("fakhar", "dorin")
+
+
+def _parse_admin_ids(raw: str) -> frozenset[int]:
+    values: set[int] = set()
+    for item in raw.split(","):
+        item = item.strip()
+        if item:
+            values.add(int(item))
+    return frozenset(values)
+
+
+ADMIN_IDS = _parse_admin_ids(os.getenv("BOT_ADMIN_IDS", ""))
 
 CONNECT_TIMEOUT = float(os.getenv("BOT_CONNECT_TIMEOUT", "30"))
 READ_TIMEOUT = float(os.getenv("BOT_READ_TIMEOUT", "60"))

@@ -21,6 +21,7 @@ from ..strings import (
 )
 from ..text import send_text
 from ..utils import clean_text, format_jalali_date
+from ..auth import is_admin
 
 STATE_DETAILS_LIST = 0
 STATE_DETAILS_ACTION = 1
@@ -48,7 +49,7 @@ async def send_details_report(
         sections.append(format_details(details, use_html=False))
         sections.append("\n\n" + ("=" * 50) + "\n\n")
     if not sent_any:
-        await send_text(update, "جزئیاتی پیدا نشد.", reply_markup=warehouse_menu_keyboard())
+        await send_text(update, "جزئیاتی پیدا نشد.", reply_markup=warehouse_menu_keyboard(is_admin(update)))
         context.user_data["conversation_active"] = False
         return ConversationHandler.END
     content = "".join(sections).strip()
@@ -58,7 +59,7 @@ async def send_details_report(
         pdf_bytes = render_pdf(content)
     except Exception:
         logging.exception("Failed to build details PDF.")
-        await send_text(update, "ساخت فایل PDF انجام نشد.", reply_markup=warehouse_menu_keyboard())
+        await send_text(update, "ساخت فایل PDF انجام نشد.", reply_markup=warehouse_menu_keyboard(is_admin(update)))
         context.user_data["conversation_active"] = False
         return ConversationHandler.END
     buffer = BytesIO(pdf_bytes)
@@ -83,7 +84,7 @@ async def send_catalog_images(
         return False
     images = list_catalog_images(warehouse_key, target)
     if not images:
-        await send_text(update, "کاتالوگی برای این طرح پیدا نشد.", reply_markup=warehouse_menu_keyboard())
+        await send_text(update, "کاتالوگی برای این طرح پیدا نشد.", reply_markup=warehouse_menu_keyboard(is_admin(update)))
         return False
     if not update.message:
         return False
@@ -126,7 +127,7 @@ async def details_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> i
     context.user_data["menu_level"] = "warehouse"
     template_path = ensure_warehouse_template_path(context.user_data["warehouse"])
     if not template_path:
-        await send_text(update, "?????? ???? ???.", reply_markup=warehouse_menu_keyboard())
+        await send_text(update, "?????? ???? ???.", reply_markup=warehouse_menu_keyboard(is_admin(update)))
         context.user_data["conversation_active"] = False
         return ConversationHandler.END
     try:
@@ -153,18 +154,18 @@ async def details_list(update: Update, context: ContextTypes.DEFAULT_TYPE) -> in
     text = (update.message.text or "").strip()
     template_path = ensure_warehouse_template_path(context.user_data["warehouse"])
     if not template_path:
-        await send_text(update, "?????? ???? ???.", reply_markup=warehouse_menu_keyboard())
+        await send_text(update, "?????? ???? ???.", reply_markup=warehouse_menu_keyboard(is_admin(update)))
         context.user_data["conversation_active"] = False
         return ConversationHandler.END
     if text == BACK_TEXT:
-        await send_text(update, "به منوی انبار برگشتید.", reply_markup=warehouse_menu_keyboard())
+        await send_text(update, "به منوی انبار برگشتید.", reply_markup=warehouse_menu_keyboard(is_admin(update)))
         context.user_data["skip_back_once"] = True
         context.user_data["conversation_active"] = False
         return ConversationHandler.END
     if text == DETAILS_ALL_TEXT:
         output_path = warehouse_output_path(context.user_data["warehouse"])
         if not output_path.exists():
-            await send_text(update, "فایل خروجی پیدا نشد.", reply_markup=warehouse_menu_keyboard())
+            await send_text(update, "فایل خروجی پیدا نشد.", reply_markup=warehouse_menu_keyboard(is_admin(update)))
             context.user_data["conversation_active"] = False
             return ConversationHandler.END
         try:
@@ -179,18 +180,18 @@ async def details_list(update: Update, context: ContextTypes.DEFAULT_TYPE) -> in
         output_path = warehouse_output_path(context.user_data["warehouse"])
         filtered_rows = context.user_data.get("details_filtered_rows") or []
         if not filtered_rows:
-            await send_text(update, "ابتدا جستجو کنید.", reply_markup=warehouse_menu_keyboard())
+            await send_text(update, "ابتدا جستجو کنید.", reply_markup=warehouse_menu_keyboard(is_admin(update)))
             context.user_data["conversation_active"] = False
             return ConversationHandler.END
         if not output_path.exists():
-            await send_text(update, "فایل خروجی پیدا نشد.", reply_markup=warehouse_menu_keyboard())
+            await send_text(update, "فایل خروجی پیدا نشد.", reply_markup=warehouse_menu_keyboard(is_admin(update)))
             context.user_data["conversation_active"] = False
             return ConversationHandler.END
         return await send_details_report(update, context, filtered_rows, output_path, None)
     if text == DETAILS_ALL_TEXT:
         output_path = warehouse_output_path(context.user_data["warehouse"])
         if not output_path.exists():
-            await send_text(update, "فایل خروجی پیدا نشد.", reply_markup=warehouse_menu_keyboard())
+            await send_text(update, "فایل خروجی پیدا نشد.", reply_markup=warehouse_menu_keyboard(is_admin(update)))
             context.user_data["conversation_active"] = False
             return ConversationHandler.END
         try:
@@ -215,7 +216,7 @@ async def details_list(update: Update, context: ContextTypes.DEFAULT_TYPE) -> in
             sections.append(format_details(details, use_html=False))
             sections.append("\n\n" + ("=" * 50) + "\n\n")
         if not sent_any:
-            await send_text(update, "جزئیاتی پیدا نشد.", reply_markup=warehouse_menu_keyboard())
+            await send_text(update, "جزئیاتی پیدا نشد.", reply_markup=warehouse_menu_keyboard(is_admin(update)))
             context.user_data["conversation_active"] = False
             return ConversationHandler.END
         content = "".join(sections).strip()
@@ -224,7 +225,7 @@ async def details_list(update: Update, context: ContextTypes.DEFAULT_TYPE) -> in
             pdf_bytes = render_pdf(content)
         except Exception:
             logging.exception("Failed to build details PDF.")
-            await send_text(update, "ساخت فایل PDF انجام نشد.", reply_markup=warehouse_menu_keyboard())
+            await send_text(update, "ساخت فایل PDF انجام نشد.", reply_markup=warehouse_menu_keyboard(is_admin(update)))
             context.user_data["conversation_active"] = False
             return ConversationHandler.END
         buffer = BytesIO(pdf_bytes)
@@ -248,16 +249,16 @@ async def details_list(update: Update, context: ContextTypes.DEFAULT_TYPE) -> in
         try:
             details = get_output_row_details(target, output_path)
         except FileNotFoundError:
-            await send_text(update, "فایل خروجی پیدا نشد.", reply_markup=warehouse_menu_keyboard())
+            await send_text(update, "فایل خروجی پیدا نشد.", reply_markup=warehouse_menu_keyboard(is_admin(update)))
             context.user_data["conversation_active"] = False
             return ConversationHandler.END
         except Exception:
             logging.exception("Failed to read output file.")
-            await send_text(update, "خواندن جزئیات ممکن نیست.", reply_markup=warehouse_menu_keyboard())
+            await send_text(update, "خواندن جزئیات ممکن نیست.", reply_markup=warehouse_menu_keyboard(is_admin(update)))
             context.user_data["conversation_active"] = False
             return ConversationHandler.END
         if not details:
-            await send_text(update, "جزئیاتی پیدا نشد.", reply_markup=warehouse_menu_keyboard())
+            await send_text(update, "جزئیاتی پیدا نشد.", reply_markup=warehouse_menu_keyboard(is_admin(update)))
             context.user_data["conversation_active"] = False
             return ConversationHandler.END
         await send_text(
@@ -299,7 +300,7 @@ async def details_list(update: Update, context: ContextTypes.DEFAULT_TYPE) -> in
 async def details_action(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     text = (update.message.text or "").strip()
     if text == BACK_TEXT:
-        await send_text(update, "به منوی انبار برگشتید.", reply_markup=warehouse_menu_keyboard())
+        await send_text(update, "به منوی انبار برگشتید.", reply_markup=warehouse_menu_keyboard(is_admin(update)))
         context.user_data["skip_back_once"] = True
         context.user_data["conversation_active"] = False
         return ConversationHandler.END
@@ -312,12 +313,12 @@ async def details_action(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         return STATE_DETAILS_ACTION
     target = context.user_data.get("details_selected_row")
     if not target:
-        await send_text(update, "طرحی انتخاب نشده است.", reply_markup=warehouse_menu_keyboard())
+        await send_text(update, "طرحی انتخاب نشده است.", reply_markup=warehouse_menu_keyboard(is_admin(update)))
         context.user_data["conversation_active"] = False
         return ConversationHandler.END
     sent = await send_catalog_images(update, context, target)
     if sent:
-        await send_text(update, "کاتالوگ ارسال شد.", reply_markup=warehouse_menu_keyboard())
+        await send_text(update, "کاتالوگ ارسال شد.", reply_markup=warehouse_menu_keyboard(is_admin(update)))
     context.user_data["conversation_active"] = False
     return ConversationHandler.END
 

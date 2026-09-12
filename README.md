@@ -11,6 +11,14 @@ Telegram bot that processes warehouse tile storage files and produces outputs ba
 
 Required:
 - `BOT_TOKEN`: Telegram bot token.
+- `BOT_ADMIN_IDS`: comma-separated Telegram user IDs for the initial bot administrators.
+
+Administrators can add another administrator by replying to that user's message with
+`/addadmin`, or with `/addadmin USER_ID`. Added administrators are stored persistently
+in `data/admins.json`. Other users have read-only access.
+
+Any user can run `/userid` to see their Telegram user ID. When the command is sent as
+a reply, it shows the replied-to user's ID.
 
 Optional:
 - `BOT_DEFAULT_METRIC`: `physical`, `sellable`, or `reserved` (default: `physical`).

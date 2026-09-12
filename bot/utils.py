@@ -1,5 +1,5 @@
 import re
-from datetime import date
+from datetime import date, datetime
 from decimal import Decimal, InvalidOperation
 
 _DIGIT_TRANSLATION = str.maketrans("۰۱۲۳۴۵۶۷۸۹٠١٢٣٤٥٦٧٨٩", "01234567890123456789")
@@ -104,3 +104,7 @@ def gregorian_to_jalali(value: date) -> tuple[int, int, int]:
 def format_jalali_date(value: date, sep: str = "-") -> str:
     jy, jm, jd = gregorian_to_jalali(value)
     return f"{jy:04d}{sep}{jm:02d}{sep}{jd:02d}"
+
+
+def format_jalali_datetime(value: datetime, sep: str = "/") -> str:
+    return f"{format_jalali_date(value.date(), sep=sep)} - {value:%H:%M}"

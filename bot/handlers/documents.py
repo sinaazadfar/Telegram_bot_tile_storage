@@ -19,10 +19,14 @@ from ..config import (
     ensure_warehouse_template_path,
 )
 from ..text import send_text
+from ..auth import is_admin
 
 
 async def handle_document(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if not update.message or not update.message.document:
+        return
+    if not is_admin(update):
+        await send_text(update, "شما فقط دسترسی مشاهده دارید و نمی‌توانید فایل ارسال کنید.")
         return
     if not context.user_data.get("warehouse"):
         await send_text(update, "ابتدا انبار را انتخاب کنید.")

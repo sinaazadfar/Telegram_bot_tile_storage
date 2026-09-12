@@ -42,12 +42,14 @@ def main_keyboard() -> ReplyKeyboardMarkup:
     )
 
 
-def warehouse_menu_keyboard() -> ReplyKeyboardMarkup:
+def warehouse_menu_keyboard(is_admin: bool = False) -> ReplyKeyboardMarkup:
+    rows = [[DETAILS_TEXT]]
+    if is_admin:
+        rows.insert(0, [MANAGE_MENU_TEXT, DETAILS_TEXT])
+        rows.pop(1)
+    rows.append([BACK_TEXT])
     return ReplyKeyboardMarkup(
-        [
-            [MANAGE_MENU_TEXT, DETAILS_TEXT],
-            [BACK_TEXT],
-        ],
+        rows,
         resize_keyboard=True,
     )
 
