@@ -47,6 +47,7 @@ def main() -> None:
     if not BOT_TOKEN:
         raise RuntimeError("BOT_TOKEN environment variable is required.")
     logging.basicConfig(level=logging.INFO)
+    logging.getLogger("httpx").setLevel(logging.WARNING)
     request = HTTPXRequest(
         connection_pool_size=REQUEST_POOL_SIZE,
         connect_timeout=CONNECT_TIMEOUT,
