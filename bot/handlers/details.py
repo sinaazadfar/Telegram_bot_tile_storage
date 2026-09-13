@@ -1,3 +1,4 @@
+import asyncio
 import logging
 from datetime import datetime
 from decimal import Decimal, InvalidOperation
@@ -23,6 +24,7 @@ from ..strings import (
     DETAILS_ALL_TEXT,
     DETAILS_ALL_PDF_OUTPUT,
     DETAILS_ALL_TEXT_OUTPUT,
+    DETAILS_CONTINUE_TEXT_OUTPUT,
     CATALOG_GET_TEXT,
     DETAILS_FILTERED_TEXT,
     DETAILS_FILTERED_PDF_OUTPUT,
@@ -42,7 +44,8 @@ from ..auth import is_admin
 STATE_DETAILS_LIST = 0
 STATE_DETAILS_ACTION = 1
 SELLABLE_TOTAL_HEADER = normalize_query("مجموع طرح (قابل فروش)")
-TELEGRAM_TEXT_LIMIT = 4000
+TELEGRAM_TEXT_LIMIT = 3500
+TEXT_REPORT_BATCH_SIZE = 10
 
 
 def chunk_report_sections(sections: list[str]) -> list[str]:
@@ -78,6 +81,51 @@ def details_menu_buttons(
         [AVAILABLE_CATALOGS_TEXT],
         *build_buttons_from_labels(label_map),
     ]
+
+
+async def send_next_text_report_batch(
+    update: Update, context: ContextTypes.DEFAULT_TYPE
+) -> int:
+    chunks = context.user_data.get("details_text_chunks") or []
+    start = context.user_data.get("details_text_chunk_index", 0)
+    end = min(start + TEXT_REPORT_BATCH_SIZE, len(chunks))
+    try:
+        for index in range(start, end):
+            await send_text(update, chunks[index])
+            context.user_data["details_text_chunk_index"] = index + 1
+            if index + 1 < end:
+                await asyncio.sleep(0.25)
+    except Exception:
+        logging.exception("Failed to send details text report batch.")
+        await send_text(
+            update,
+            "ارسال این بخش کامل نشد. برای ادامه دوباره دکمه زیر را بزنید.",
+            reply_markup=keyboard_with_back([[DETAILS_CONTINUE_TEXT_OUTPUT]]),
+        )
+        return STATE_DETAILS_LIST
+
+    if end < len(chunks):
+        await send_text(
+            update,
+            f"{end} از {len(chunks)} پیام ارسال شد. برای دریافت ادامه، دکمه زیر را بزنید.",
+            reply_markup=keyboard_with_back([[DETAILS_CONTINUE_TEXT_OUTPUT]]),
+        )
+        return STATE_DETAILS_LIST
+
+    context.user_data.pop("details_text_chunks", None)
+    context.user_data.pop("details_text_chunk_index", None)
+    output_button = context.user_data.pop(
+        "details_text_return_button", DETAILS_ALL_TEXT
+    )
+    buttons = details_menu_buttons(
+        output_button, context.user_data.get("details_label_map", {})
+    )
+    await send_text(
+        update,
+        "خروجی متنی کامل شد.",
+        reply_markup=keyboard_with_back(buttons),
+    )
+    return STATE_DETAILS_LIST
 
 
 def sellable_total(
@@ -154,22 +202,12 @@ async def send_details_report(
         await send_text(update, status_message)
 
     if output_format == "text":
-        try:
-            text_sections = [
-                format_details(details, use_html=False) for details in details_by_row
-            ]
-            for chunk in chunk_report_sections(text_sections):
-                await send_text(update, chunk)
-        except Exception:
-            logging.exception("Failed to send details text report.")
-            await send_text(
-                update,
-                "ارسال خروجی متنی کامل نشد. لطفاً دوباره تلاش کنید.",
-                reply_markup=warehouse_menu_keyboard(is_admin(update)),
-            )
-            context.user_data["conversation_active"] = False
-            return ConversationHandler.END
-        return STATE_DETAILS_LIST
+        text_sections = [
+            format_details(details, use_html=False) for details in details_by_row
+        ]
+        context.user_data["details_text_chunks"] = chunk_report_sections(text_sections)
+        context.user_data["details_text_chunk_index"] = 0
+        return await send_next_text_report_batch(update, context)
 
     for details in details_by_row:
         sections.append(format_details(details, use_html=False))
@@ -351,6 +389,9 @@ async def details_list(update: Update, context: ContextTypes.DEFAULT_TYPE) -> in
         context.user_data["conversation_active"] = False
         return ConversationHandler.END
     if text == BACK_TEXT:
+        context.user_data.pop("details_text_chunks", None)
+        context.user_data.pop("details_text_chunk_index", None)
+        context.user_data.pop("details_text_return_button", None)
         await send_text(
             update,
             "به منوی انبار برگشتید.",
@@ -377,6 +418,8 @@ async def details_list(update: Update, context: ContextTypes.DEFAULT_TYPE) -> in
             context.user_data["conversation_active"] = False
             return ConversationHandler.END
         output_format = "text" if text == DETAILS_ALL_TEXT_OUTPUT else "pdf"
+        if output_format == "text":
+            context.user_data["details_text_return_button"] = DETAILS_ALL_TEXT
         return await send_details_report(
             update, context, rows, output_path, None, output_format
         )
@@ -400,9 +443,16 @@ async def details_list(update: Update, context: ContextTypes.DEFAULT_TYPE) -> in
             context.user_data["conversation_active"] = False
             return ConversationHandler.END
         output_format = "text" if text == DETAILS_FILTERED_TEXT_OUTPUT else "pdf"
+        if output_format == "text":
+            context.user_data["details_text_return_button"] = DETAILS_FILTERED_TEXT
         return await send_details_report(
             update, context, filtered_rows, output_path, None, output_format
         )
+    if text == DETAILS_CONTINUE_TEXT_OUTPUT:
+        if not context.user_data.get("details_text_chunks"):
+            await send_text(update, "خروجی متنی در حال انتظاری وجود ندارد.")
+            return STATE_DETAILS_LIST
+        return await send_next_text_report_batch(update, context)
     if text == AVAILABLE_CATALOGS_TEXT:
         output_path = warehouse_output_path(context.user_data["warehouse"])
         if not output_path.exists():

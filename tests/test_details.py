@@ -14,6 +14,7 @@ from bot.handlers.details import (
     sellable_total,
     send_available_catalogs,
     send_details_report,
+    send_next_text_report_batch,
 )
 from bot.strings import (
     AVAILABLE_CATALOGS_TEXT,
@@ -191,6 +192,36 @@ class AvailableCatalogTests(IsolatedAsyncioTestCase):
 
 
 class DetailsReportTests(IsolatedAsyncioTestCase):
+    @patch("bot.handlers.details.asyncio.sleep", new_callable=AsyncMock)
+    @patch("bot.handlers.details.send_text", new_callable=AsyncMock)
+    async def test_text_output_waits_for_continue_after_ten_messages(
+        self, send_text_mock: AsyncMock, sleep_mock: AsyncMock
+    ) -> None:
+        update = SimpleNamespace(message=SimpleNamespace())
+        context = SimpleNamespace(
+            user_data={
+                "details_text_chunks": [f"chunk-{index}" for index in range(11)],
+                "details_text_chunk_index": 0,
+                "details_text_return_button": DETAILS_ALL_TEXT,
+                "details_label_map": {},
+            }
+        )
+
+        first_result = await send_next_text_report_batch(update, context)
+
+        self.assertEqual(first_result, STATE_DETAILS_LIST)
+        self.assertEqual(context.user_data["details_text_chunk_index"], 10)
+        self.assertEqual(send_text_mock.await_count, 11)
+        self.assertIn("10 از 11", send_text_mock.await_args.args[1])
+        self.assertEqual(sleep_mock.await_count, 9)
+
+        second_result = await send_next_text_report_batch(update, context)
+
+        self.assertEqual(second_result, STATE_DETAILS_LIST)
+        self.assertNotIn("details_text_chunks", context.user_data)
+        self.assertEqual(send_text_mock.await_count, 13)
+        self.assertEqual(send_text_mock.await_args.args[1], "خروجی متنی کامل شد.")
+
     @patch("bot.handlers.details.send_text", new_callable=AsyncMock)
     @patch("bot.handlers.details.get_output_row_details")
     async def test_successful_text_output_keeps_details_buttons_active(
