@@ -167,8 +167,9 @@ async def send_details_report(
                 "ارسال خروجی متنی کامل نشد. لطفاً دوباره تلاش کنید.",
                 reply_markup=warehouse_menu_keyboard(is_admin(update)),
             )
-        context.user_data["conversation_active"] = False
-        return ConversationHandler.END
+            context.user_data["conversation_active"] = False
+            return ConversationHandler.END
+        return STATE_DETAILS_LIST
 
     for details in details_by_row:
         sections.append(format_details(details, use_html=False))
@@ -203,8 +204,9 @@ async def send_details_report(
             "ارسال فایل PDF انجام نشد. لطفاً دوباره تلاش کنید.",
             reply_markup=warehouse_menu_keyboard(is_admin(update)),
         )
-    context.user_data["conversation_active"] = False
-    return ConversationHandler.END
+        context.user_data["conversation_active"] = False
+        return ConversationHandler.END
+    return STATE_DETAILS_LIST
 
 
 async def send_catalog_images(

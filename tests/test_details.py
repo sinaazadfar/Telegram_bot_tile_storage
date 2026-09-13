@@ -6,12 +6,14 @@ from unittest.mock import AsyncMock, patch
 from telegram.ext import ConversationHandler
 
 from bot.handlers.details import (
+    STATE_DETAILS_LIST,
     catalog_caption,
     chunk_report_sections,
     details_list,
     details_menu_buttons,
     sellable_total,
     send_available_catalogs,
+    send_details_report,
 )
 from bot.strings import (
     AVAILABLE_CATALOGS_TEXT,
@@ -186,3 +188,45 @@ class AvailableCatalogTests(IsolatedAsyncioTestCase):
         send_available.assert_awaited_once_with(
             update, context, scoped_rows, output_path
         )
+
+
+class DetailsReportTests(IsolatedAsyncioTestCase):
+    @patch("bot.handlers.details.send_text", new_callable=AsyncMock)
+    @patch("bot.handlers.details.get_output_row_details")
+    async def test_successful_text_output_keeps_details_buttons_active(
+        self, get_details, send_text_mock: AsyncMock
+    ) -> None:
+        get_details.return_value = [("نام طرح", "طرح تست")]
+        update = SimpleNamespace(message=SimpleNamespace(), effective_message=None)
+        context = SimpleNamespace(
+            user_data={"warehouse": "fakhar", "conversation_active": True}
+        )
+
+        result = await send_details_report(
+            update, context, [{}], Path("output.xlsx"), None, "text"
+        )
+
+        self.assertEqual(result, STATE_DETAILS_LIST)
+        self.assertTrue(context.user_data["conversation_active"])
+        send_text_mock.assert_awaited()
+
+    @patch("bot.handlers.details.render_pdf", return_value=b"pdf")
+    @patch("bot.handlers.details.get_output_row_details")
+    async def test_successful_pdf_output_keeps_details_buttons_active(
+        self, get_details, render_pdf_mock
+    ) -> None:
+        get_details.return_value = [("نام طرح", "طرح تست")]
+        message = SimpleNamespace(reply_document=AsyncMock())
+        update = SimpleNamespace(message=message, effective_message=message)
+        context = SimpleNamespace(
+            user_data={"warehouse": "fakhar", "conversation_active": True}
+        )
+
+        result = await send_details_report(
+            update, context, [{}], Path("output.xlsx"), None, "pdf"
+        )
+
+        self.assertEqual(result, STATE_DETAILS_LIST)
+        self.assertTrue(context.user_data["conversation_active"])
+        message.reply_document.assert_awaited_once()
+        render_pdf_mock.assert_called_once()
