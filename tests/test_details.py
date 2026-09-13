@@ -7,20 +7,37 @@ from telegram.ext import ConversationHandler
 
 from bot.handlers.details import (
     catalog_caption,
+    chunk_report_sections,
     details_list,
     details_menu_buttons,
     sellable_total,
     send_available_catalogs,
 )
-from bot.strings import AVAILABLE_CATALOGS_TEXT, DETAILS_ALL_TEXT
+from bot.strings import (
+    AVAILABLE_CATALOGS_TEXT,
+    DETAILS_ALL_PDF_OUTPUT,
+    DETAILS_ALL_TEXT,
+    DETAILS_ALL_TEXT_OUTPUT,
+)
 
 
 class DetailsHelpersTests(TestCase):
+    def test_text_report_chunks_stay_within_telegram_limit(self) -> None:
+        chunks = chunk_report_sections(["a" * 2500, "b" * 2500, "c" * 100])
+
+        self.assertEqual(len(chunks), 2)
+        self.assertTrue(all(len(chunk) <= 4000 for chunk in chunks))
+        self.assertIn("a" * 100, chunks[0])
+        self.assertIn("b" * 100, chunks[1])
+
     def test_menu_places_catalog_button_beside_output(self) -> None:
         buttons = details_menu_buttons(DETAILS_ALL_TEXT, {"طرح ۱": [{}]})
 
-        self.assertEqual(buttons[0], [DETAILS_ALL_TEXT, AVAILABLE_CATALOGS_TEXT])
-        self.assertEqual(buttons[1], ["طرح ۱"])
+        self.assertEqual(
+            buttons[0], [DETAILS_ALL_TEXT_OUTPUT, DETAILS_ALL_PDF_OUTPUT]
+        )
+        self.assertEqual(buttons[1], [AVAILABLE_CATALOGS_TEXT])
+        self.assertEqual(buttons[2], ["طرح ۱"])
 
     def test_sellable_total_parses_meter_and_pallet(self) -> None:
         details = [("مجموع طرح (قابل فروش)", "(14.43) 1,402.92")]

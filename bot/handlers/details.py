@@ -21,8 +21,12 @@ from ..strings import (
     BACK_TEXT,
     DETAILS_TEXT,
     DETAILS_ALL_TEXT,
+    DETAILS_ALL_PDF_OUTPUT,
+    DETAILS_ALL_TEXT_OUTPUT,
     CATALOG_GET_TEXT,
     DETAILS_FILTERED_TEXT,
+    DETAILS_FILTERED_PDF_OUTPUT,
+    DETAILS_FILTERED_TEXT_OUTPUT,
     WAREHOUSE_LABELS,
 )
 from ..text import send_text
@@ -38,13 +42,40 @@ from ..auth import is_admin
 STATE_DETAILS_LIST = 0
 STATE_DETAILS_ACTION = 1
 SELLABLE_TOTAL_HEADER = normalize_query("مجموع طرح (قابل فروش)")
+TELEGRAM_TEXT_LIMIT = 4000
+
+
+def chunk_report_sections(sections: list[str]) -> list[str]:
+    separator = "\n\n" + ("=" * 50) + "\n\n"
+    chunks: list[str] = []
+    current = ""
+    for section in sections:
+        parts = [
+            section[index : index + TELEGRAM_TEXT_LIMIT]
+            for index in range(0, len(section), TELEGRAM_TEXT_LIMIT)
+        ] or [""]
+        for part in parts:
+            candidate = f"{current}{separator if current else ''}{part}"
+            if current and len(candidate) > TELEGRAM_TEXT_LIMIT:
+                chunks.append(current)
+                current = part
+            else:
+                current = candidate
+    if current:
+        chunks.append(current)
+    return chunks
 
 
 def details_menu_buttons(
     output_button: str, label_map: dict[str, list[dict]]
 ) -> list[list[str]]:
+    if output_button == DETAILS_ALL_TEXT:
+        output_buttons = [DETAILS_ALL_TEXT_OUTPUT, DETAILS_ALL_PDF_OUTPUT]
+    else:
+        output_buttons = [DETAILS_FILTERED_TEXT_OUTPUT, DETAILS_FILTERED_PDF_OUTPUT]
     return [
-        [output_button, AVAILABLE_CATALOGS_TEXT],
+        output_buttons,
+        [AVAILABLE_CATALOGS_TEXT],
         *build_buttons_from_labels(label_map),
     ]
 
@@ -91,22 +122,26 @@ async def send_details_report(
     rows: list[dict],
     output_path,
     status_message: str | None,
+    output_format: str,
 ) -> int:
     sections: list[str] = []
-    sent_any = False
-    for row in rows:
-        details = get_output_row_details(row, output_path)
-        if not details:
-            continue
+    details_by_row: list[list[tuple[str, str]]] = []
+    try:
+        for row in rows:
+            details = get_output_row_details(row, output_path)
+            if details:
+                details_by_row.append(details)
+    except Exception:
+        logging.exception("Failed to read details report data.")
         await send_text(
             update,
-            format_details(details),
-            parse_mode="HTML",
+            "خواندن اطلاعات خروجی انجام نشد.",
+            reply_markup=warehouse_menu_keyboard(is_admin(update)),
         )
-        sent_any = True
-        sections.append(format_details(details, use_html=False))
-        sections.append("\n\n" + ("=" * 50) + "\n\n")
-    if not sent_any:
+        context.user_data["conversation_active"] = False
+        return ConversationHandler.END
+
+    if not details_by_row:
         await send_text(
             update,
             "جزئیاتی پیدا نشد.",
@@ -114,9 +149,31 @@ async def send_details_report(
         )
         context.user_data["conversation_active"] = False
         return ConversationHandler.END
-    content = "".join(sections).strip()
+
     if status_message:
         await send_text(update, status_message)
+
+    if output_format == "text":
+        try:
+            text_sections = [
+                format_details(details, use_html=False) for details in details_by_row
+            ]
+            for chunk in chunk_report_sections(text_sections):
+                await send_text(update, chunk)
+        except Exception:
+            logging.exception("Failed to send details text report.")
+            await send_text(
+                update,
+                "ارسال خروجی متنی کامل نشد. لطفاً دوباره تلاش کنید.",
+                reply_markup=warehouse_menu_keyboard(is_admin(update)),
+            )
+        context.user_data["conversation_active"] = False
+        return ConversationHandler.END
+
+    for details in details_by_row:
+        sections.append(format_details(details, use_html=False))
+        sections.append("\n\n" + ("=" * 50) + "\n\n")
+    content = "".join(sections).strip()
     try:
         pdf_bytes = render_pdf(content)
     except Exception:
@@ -136,7 +193,16 @@ async def send_details_report(
     )
     date_stamp = format_jalali_date(datetime.now().date())
     filename = f"{warehouse_label}_{date_stamp}.pdf"
-    await update.message.reply_document(document=InputFile(buffer, filename=filename))
+    message = update.message or update.effective_message
+    try:
+        await message.reply_document(document=InputFile(buffer, filename=filename))
+    except Exception:
+        logging.exception("Failed to send details PDF.")
+        await send_text(
+            update,
+            "ارسال فایل PDF انجام نشد. لطفاً دوباره تلاش کنید.",
+            reply_markup=warehouse_menu_keyboard(is_admin(update)),
+        )
     context.user_data["conversation_active"] = False
     return ConversationHandler.END
 
@@ -291,7 +357,7 @@ async def details_list(update: Update, context: ContextTypes.DEFAULT_TYPE) -> in
         context.user_data["skip_back_once"] = True
         context.user_data["conversation_active"] = False
         return ConversationHandler.END
-    if text == DETAILS_ALL_TEXT:
+    if text in {DETAILS_ALL_TEXT_OUTPUT, DETAILS_ALL_PDF_OUTPUT}:
         output_path = warehouse_output_path(context.user_data["warehouse"])
         if not output_path.exists():
             await send_text(
@@ -308,8 +374,11 @@ async def details_list(update: Update, context: ContextTypes.DEFAULT_TYPE) -> in
             await send_text(update, "لیست طرح‌ها قابل دریافت نیست.")
             context.user_data["conversation_active"] = False
             return ConversationHandler.END
-        return await send_details_report(update, context, rows, output_path, None)
-    if text == DETAILS_FILTERED_TEXT:
+        output_format = "text" if text == DETAILS_ALL_TEXT_OUTPUT else "pdf"
+        return await send_details_report(
+            update, context, rows, output_path, None, output_format
+        )
+    if text in {DETAILS_FILTERED_TEXT_OUTPUT, DETAILS_FILTERED_PDF_OUTPUT}:
         output_path = warehouse_output_path(context.user_data["warehouse"])
         filtered_rows = context.user_data.get("details_filtered_rows") or []
         if not filtered_rows:
@@ -328,8 +397,9 @@ async def details_list(update: Update, context: ContextTypes.DEFAULT_TYPE) -> in
             )
             context.user_data["conversation_active"] = False
             return ConversationHandler.END
+        output_format = "text" if text == DETAILS_FILTERED_TEXT_OUTPUT else "pdf"
         return await send_details_report(
-            update, context, filtered_rows, output_path, None
+            update, context, filtered_rows, output_path, None, output_format
         )
     if text == AVAILABLE_CATALOGS_TEXT:
         output_path = warehouse_output_path(context.user_data["warehouse"])
