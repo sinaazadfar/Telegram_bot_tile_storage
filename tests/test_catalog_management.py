@@ -6,14 +6,19 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import openpyxl
 
 from bot.formatting import build_label_map
-from bot.handlers.catalogs import STATE_CATALOG_SELECT, catalogs_menu, filter_catalog_targets
+from bot.handlers.catalogs import (
+    STATE_CATALOG_SELECT,
+    catalogs_menu,
+    catalogs_select,
+    filter_catalog_targets,
+)
 from bot.storage import (
     DuplicatePlanCodeError,
     append_template_row,
     list_template_rows,
     update_template_row,
 )
-from bot.strings import CATALOG_UPSERT_TEXT
+from bot.strings import CATALOG_MISSING_TEXT, CATALOG_UPSERT_TEXT
 
 
 def make_template(path: Path, rows: list[tuple]) -> None:
@@ -69,13 +74,13 @@ class CatalogPlanListTest(unittest.IsolatedAsyncioTestCase):
             [Path("img.jpg")] if row["code_display"] == "200" else []
         )
 
-        self.assertEqual(filter_catalog_targets("fakhar", "upsert", rows), [rows[0]])
+        self.assertEqual(filter_catalog_targets("fakhar", "missing", rows), [rows[0]])
         self.assertEqual(filter_catalog_targets("fakhar", "delete", rows), [rows[1]])
 
     @patch("bot.handlers.catalogs.send_text", new_callable=AsyncMock)
     @patch("bot.handlers.catalogs.list_catalog_images")
     @patch("bot.handlers.catalogs.ensure_warehouse_template_path")
-    async def test_upsert_lists_only_plans_without_catalog(
+    async def test_upsert_lists_all_plans_and_offers_missing_filter(
         self, template_path_mock, list_images_mock, send_text_mock
     ) -> None:
         with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as temp_dir:
@@ -94,8 +99,42 @@ class CatalogPlanListTest(unittest.IsolatedAsyncioTestCase):
 
         self.assertEqual(state, STATE_CATALOG_SELECT)
         label_map = context.user_data["catalog_label_map"]
-        self.assertEqual(list(label_map), ["بدون کاتالوگ (100)"])
+        self.assertEqual(
+            list(label_map), ["بدون کاتالوگ (100)", "با کاتالوگ (200)"]
+        )
+        keyboard = send_text_mock.await_args.kwargs["reply_markup"].keyboard
+        keyboard_texts = [[button.text for button in row] for row in keyboard]
+        self.assertIn([CATALOG_MISSING_TEXT], keyboard_texts)
         send_text_mock.assert_awaited_once()
+
+    @patch("bot.handlers.catalogs.send_text", new_callable=AsyncMock)
+    @patch("bot.handlers.catalogs.list_catalog_images")
+    @patch("bot.handlers.catalogs.ensure_warehouse_template_path")
+    async def test_missing_button_filters_existing_catalogs(
+        self, template_path_mock, list_images_mock, send_text_mock
+    ) -> None:
+        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as temp_dir:
+            path = Path(temp_dir) / "template.xlsx"
+            make_template(path, [(100, "بدون کاتالوگ", "1", 1), (200, "با کاتالوگ", "1", 1)])
+            template_path_mock.return_value = path
+            list_images_mock.side_effect = lambda warehouse, row: (
+                [Path("img.jpg")] if row["code_display"] == "200" else []
+            )
+            update = MagicMock()
+            update.message.text = CATALOG_MISSING_TEXT
+            context = MagicMock()
+            context.user_data = {
+                "warehouse": "fakhar",
+                "catalog_mode": "upsert",
+                "catalog_missing_only": False,
+            }
+
+            state = await catalogs_select(update, context)
+
+        self.assertEqual(state, STATE_CATALOG_SELECT)
+        self.assertEqual(
+            list(context.user_data["catalog_label_map"]), ["بدون کاتالوگ (100)"]
+        )
 
 
 if __name__ == "__main__":

@@ -32,5 +32,7 @@ WAREHOUSE_BY_LABEL = {label: key for key, label in WAREHOUSE_LABELS.items()}
 CATALOG_MENU_TEXT = "مدیریت کاتالوگ"
 CATALOG_UPSERT_TEXT = "افزودن/ویرایش کاتالوگ"
 CATALOG_DELETE_TEXT = "حذف کاتالوگ"
+CATALOG_MISSING_TEXT = "طرح‌های بدون کاتالوگ"
+CATALOG_ALL_TEXT = "نمایش همه طرح‌ها"
 CATALOG_DONE_TEXT = "اتمام بارگذاری"
 CATALOG_GET_TEXT = "دریافت کاتالوگ"

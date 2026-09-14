@@ -30,8 +30,10 @@ from ..keyboards import (
 from ..storage import find_template_matches_any, list_template_rows
 from ..strings import (
     BACK_TEXT,
+    CATALOG_ALL_TEXT,
     CATALOG_DELETE_TEXT,
     CATALOG_DONE_TEXT,
+    CATALOG_MISSING_TEXT,
     CATALOG_MENU_TEXT,
     CATALOG_UPSERT_TEXT,
     CONFIRM_TEXT,
@@ -46,11 +48,23 @@ STATE_CATALOG_DELETE_CONFIRM = 3
 
 
 def filter_catalog_targets(warehouse: str, mode: str, rows: list[dict]) -> list[dict]:
-    if mode == "upsert":
+    if mode == "missing":
         return [row for row in rows if not list_catalog_images(warehouse, row)]
     if mode == "delete":
         return [row for row in rows if list_catalog_images(warehouse, row)]
     return rows
+
+
+def catalog_selection_buttons(context, label_map: dict[str, list[dict]]) -> list[list[str]]:
+    buttons = build_buttons_from_labels(label_map)
+    if context.user_data.get("catalog_mode") == "upsert":
+        filter_text = (
+            CATALOG_ALL_TEXT
+            if context.user_data.get("catalog_missing_only")
+            else CATALOG_MISSING_TEXT
+        )
+        buttons.insert(0, [filter_text])
+    return buttons
 
 
 async def catalogs_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
@@ -105,8 +119,11 @@ async def catalogs_menu(update: Update, context: ContextTypes.DEFAULT_TYPE) -> i
         context.user_data["conversation_active"] = False
         return ConversationHandler.END
     context.user_data["catalog_mode"] = mode
+    context.user_data["catalog_missing_only"] = False
     context.user_data["catalog_label_map"] = build_label_map(matches)
-    buttons = build_buttons_from_labels(context.user_data["catalog_label_map"])
+    buttons = catalog_selection_buttons(
+        context, context.user_data["catalog_label_map"]
+    )
     await send_text(
         update,
         "طرح موردنظر را انتخاب کنید:",
@@ -124,6 +141,32 @@ async def catalogs_select(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
         await send_text(update, "قالب انبار پیدا نشد.", reply_markup=manage_menu_keyboard())
         context.user_data["conversation_active"] = False
         return ConversationHandler.END
+    if context.user_data.get("catalog_mode") == "upsert" and text in {
+        CATALOG_MISSING_TEXT,
+        CATALOG_ALL_TEXT,
+    }:
+        try:
+            matches = list_template_rows(template_path)
+        except Exception:
+            logging.exception("Failed to filter template rows for catalog.")
+            await send_text(update, "خواندن لیست طرح‌ها ممکن نیست.")
+            return STATE_CATALOG_SELECT
+        missing_only = text == CATALOG_MISSING_TEXT
+        context.user_data["catalog_missing_only"] = missing_only
+        if missing_only:
+            matches = filter_catalog_targets(
+                context.user_data["warehouse"], "missing", matches
+            )
+        label_map = build_label_map(matches)
+        context.user_data["catalog_label_map"] = label_map
+        buttons = catalog_selection_buttons(context, label_map)
+        message = (
+            "طرح‌های بدون کاتالوگ نمایش داده شدند."
+            if missing_only
+            else "همه طرح‌ها نمایش داده شدند."
+        )
+        await send_text(update, message, reply_markup=keyboard_with_back(buttons))
+        return STATE_CATALOG_SELECT
     label_map = context.user_data.get("catalog_label_map", {})
     if text in label_map:
         rows = label_map[text]
@@ -137,17 +180,16 @@ async def catalogs_select(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
         logging.exception("Failed to search template rows for catalog.")
         await send_text(update, "جستجو ممکن نیست. دوباره تلاش کنید.")
         return STATE_CATALOG_SELECT
-    matches = filter_catalog_targets(
-        context.user_data["warehouse"],
-        context.user_data.get("catalog_mode", ""),
-        matches,
-    )
+    filter_mode = context.user_data.get("catalog_mode", "")
+    if context.user_data.get("catalog_missing_only"):
+        filter_mode = "missing"
+    matches = filter_catalog_targets(context.user_data["warehouse"], filter_mode, matches)
     if not matches:
         await send_text(update, "طرحی پیدا نشد.")
         return STATE_CATALOG_SELECT
     label_map = build_label_map(matches)
     context.user_data["catalog_label_map"] = label_map
-    buttons = build_buttons_from_labels(label_map)
+    buttons = catalog_selection_buttons(context, label_map)
     await send_text(
         update,
         "نتایج فیلتر شده. یکی را انتخاب کنید:",
