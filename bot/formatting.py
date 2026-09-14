@@ -26,7 +26,25 @@ def build_label_map(rows: list[dict]) -> dict[str, list[dict]]:
     label_map: dict[str, list[dict]] = {}
     for row in rows:
         label = row_label(row)
-        label_map.setdefault(label, []).append(row)
+        grouped_rows = label_map.setdefault(label, [])
+        row_identity = (
+            normalize_query(row.get("code_display", "")),
+            normalize_query(row.get("name_display", "")),
+            normalize_query(row.get("size_display", "")),
+            normalize_query(row.get("divisor_display", "")),
+        )
+        if any(
+            (
+                normalize_query(existing.get("code_display", "")),
+                normalize_query(existing.get("name_display", "")),
+                normalize_query(existing.get("size_display", "")),
+                normalize_query(existing.get("divisor_display", "")),
+            )
+            == row_identity
+            for existing in grouped_rows
+        ):
+            continue
+        grouped_rows.append(row)
     return label_map
 
 

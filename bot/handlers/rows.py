@@ -24,6 +24,7 @@ from ..config import (
 from ..formatting import build_buttons_from_labels, build_label_map
 from ..keyboards import keyboard_with_back, main_keyboard, manage_rows_keyboard
 from ..storage import (
+    DuplicatePlanCodeError,
     append_template_row,
     delete_template_row,
     find_template_matches_any,
@@ -213,6 +214,9 @@ async def add_row_confirm(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
         new_row = append_template_row(
             row["code"], row["name"], row["size"], row["divisor"], template_path
         )
+    except DuplicatePlanCodeError:
+        await send_text(update, "این کد کالا قبلا ثبت شده است.")
+        return STATE_CONFIRM
     except Exception:
         logging.exception("Failed to append template row.")
         await send_text(update, "ثبت نشد. دوباره تلاش کنید.")
@@ -525,6 +529,9 @@ async def edit_row_confirm(update: Update, context: ContextTypes.DEFAULT_TYPE) -
         return ConversationHandler.END
     try:
         updated = update_template_row(original, new_vals, template_path)
+    except DuplicatePlanCodeError:
+        await send_text(update, "این کد کالا برای طرح دیگری ثبت شده است.")
+        return STATE_EDIT_CONFIRM
     except Exception:
         logging.exception("Failed to update template row.")
         await send_text(update, "ویرایش انجام نشد. دوباره تلاش کنید.")

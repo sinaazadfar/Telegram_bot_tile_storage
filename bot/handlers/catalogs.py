@@ -45,6 +45,14 @@ STATE_CATALOG_UPLOAD = 2
 STATE_CATALOG_DELETE_CONFIRM = 3
 
 
+def filter_catalog_targets(warehouse: str, mode: str, rows: list[dict]) -> list[dict]:
+    if mode == "upsert":
+        return [row for row in rows if not list_catalog_images(warehouse, row)]
+    if mode == "delete":
+        return [row for row in rows if list_catalog_images(warehouse, row)]
+    return rows
+
+
 async def catalogs_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     if not is_admin(update):
         await send_text(update, "شما فقط دسترسی مشاهده دارید.")
@@ -86,8 +94,14 @@ async def catalogs_menu(update: Update, context: ContextTypes.DEFAULT_TYPE) -> i
         await send_text(update, "خواندن لیست طرح‌ها ممکن نیست.")
         context.user_data["conversation_active"] = False
         return ConversationHandler.END
+    matches = filter_catalog_targets(context.user_data["warehouse"], mode, matches)
     if not matches:
-        await send_text(update, "طرحی برای انتخاب وجود ندارد.", reply_markup=manage_menu_keyboard())
+        message = (
+            "همه طرح‌ها کاتالوگ دارند."
+            if mode == "upsert"
+            else "طرحی با کاتالوگ ثبت‌شده وجود ندارد."
+        )
+        await send_text(update, message, reply_markup=manage_menu_keyboard())
         context.user_data["conversation_active"] = False
         return ConversationHandler.END
     context.user_data["catalog_mode"] = mode
@@ -123,6 +137,11 @@ async def catalogs_select(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
         logging.exception("Failed to search template rows for catalog.")
         await send_text(update, "جستجو ممکن نیست. دوباره تلاش کنید.")
         return STATE_CATALOG_SELECT
+    matches = filter_catalog_targets(
+        context.user_data["warehouse"],
+        context.user_data.get("catalog_mode", ""),
+        matches,
+    )
     if not matches:
         await send_text(update, "طرحی پیدا نشد.")
         return STATE_CATALOG_SELECT

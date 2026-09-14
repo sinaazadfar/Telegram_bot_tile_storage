@@ -6,6 +6,23 @@ from .config import TEMPLATE_LOCK, TEMPLATE_PATH
 from .utils import clean_text, normalize_code_value, normalize_query
 
 
+class DuplicatePlanCodeError(ValueError):
+    """Raised when a template would contain the same normalized code twice."""
+
+
+def _row_code(ws, row_number: int) -> str:
+    return normalize_code_value(ws.cell(row_number, 1).value)
+
+
+def _ensure_unique_code(ws, code, exclude_row: int | None = None) -> None:
+    code_norm = normalize_code_value(code)
+    for row_number in range(2, ws.max_row + 1):
+        if row_number == exclude_row:
+            continue
+        if _row_code(ws, row_number) == code_norm:
+            raise DuplicatePlanCodeError(f"Plan code {code_norm!r} already exists.")
+
+
 def resolve_template_path(template_path: Path | None) -> Path:
     if template_path is None:
         return TEMPLATE_PATH
@@ -22,6 +39,7 @@ def append_template_row(
         wb = openpyxl.load_workbook(template_path)
         try:
             ws = wb.active
+            _ensure_unique_code(ws, code)
             last_row = 1
             for r in range(2, ws.max_row + 1):
                 if any(ws.cell(r, c).value not in (None, "") for c in range(1, 5)):
@@ -155,6 +173,7 @@ def update_template_row(
                         break
             if row_index is None:
                 return False
+            _ensure_unique_code(ws, new_values["code"], exclude_row=row_index)
             ws.cell(row_index, 1).value = new_values["code"]
             ws.cell(row_index, 2).value = new_values["name"]
             ws.cell(row_index, 3).value = new_values["size"]
