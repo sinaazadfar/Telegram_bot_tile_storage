@@ -26,6 +26,11 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 
 async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     message = (
+        "پشتیبان (فقط مدیر و گفت‌وگوی خصوصی):\n"
+        "/export_backup دریافت پشتیبان کامل\n"
+        "/import_backup بازیابی پشتیبان\n"
+        "/cancel لغو بازیابی\n"
+        "ارسال روزانه پشتیبان: ساعت ۰۳:۳۰ تهران.\n\n"
         "راهنما:\n"
         "- یک فایل .xlsx یا .pdf ارسال کنید\n"
         "- ربات خروجی را بر اساس تمپلیت برمی‌گرداند\n"

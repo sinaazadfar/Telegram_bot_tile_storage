@@ -1,5 +1,6 @@
 import asyncio
 import logging
+from ..backup_runtime import wait_for_processing
 
 from telegram import Update
 from telegram.error import NetworkError, TimedOut
@@ -109,10 +110,7 @@ async def products_receive_file(update: Update, context: ContextTypes.DEFAULT_TY
             None,
             False,
         )
-        if PROCESS_TIMEOUT:
-            await asyncio.wait_for(processing_task, timeout=PROCESS_TIMEOUT)
-        else:
-            await processing_task
+        await wait_for_processing(processing_task, PROCESS_TIMEOUT)
         await send_text(
             update,
             "فایل مرتب‌شده ذخیره شد. برای دریافت، دکمه مربوطه را بزنید.",

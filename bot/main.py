@@ -15,6 +15,7 @@ from .config import (
     WRITE_TIMEOUT,
 )
 from .handlers.catalogs import build_catalog_handler
+from .backup_runtime import CoordinatedApplication, register_handlers, startup
 from .handlers.details import build_details_handler
 from .handlers.documents import handle_document
 from .handlers.menu import (
@@ -66,11 +67,14 @@ def main() -> None:
     )
     app = (
         ApplicationBuilder()
+        .application_class(CoordinatedApplication)
+        .post_init(startup)
         .token(BOT_TOKEN)
         .request(request)
         .get_updates_request(updates_request)
         .build()
     )
+    register_handlers(app)
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("help", help_command))
     app.add_handler(CommandHandler("userid", user_id_command))

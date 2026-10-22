@@ -1,45 +1,24 @@
-name: Build and Run Bot (Self-Hosted)
+name: Bot checks
 
 on:
   workflow_dispatch:
   push:
-    branches:
-      - master
+    branches: [master]
+  pull_request:
+
+permissions:
+  contents: read
 
 jobs:
-  build-and-run:
-    runs-on: self-hosted
+  tests:
+    runs-on: ubuntu-latest
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Build image
-        run: docker build -t telegram-bot-tile-storage:latest .
-
-      - name: Stop existing container
-        run: |
-          docker stop telegram-bot-tile-storage || true
-          docker rm telegram-bot-tile-storage || true
-
-      - name: Create .env
-        env:
-          BOT_TOKEN: ${{ secrets.BOT_TOKEN }}
-          BOT_DEFAULT_METRIC: physical
-          BOT_ADMIN_IDS: "252486544"
-        run: |
-          printf "BOT_TOKEN=%s\n" "$BOT_TOKEN" > .env
-          printf "BOT_DEFAULT_METRIC=%s\n" "$BOT_DEFAULT_METRIC" >> .env
-          printf "BOT_ADMIN_IDS=%s\n" "$BOT_ADMIN_IDS" >> .env
-          printf "BOT_PDF_FONT_PATH=%s\n" "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf" >> .env
-
-      - name: Run container
-        env:
-          BOT_TOKEN: ${{ secrets.BOT_TOKEN }}
-        run: |
-          docker run -d \
-            --name telegram-bot-tile-storage \
-            --restart unless-stopped \
-            --env-file .env \
-            -e BOT_TOKEN="$BOT_TOKEN" \
-            -v telegram-bot-tile-storage-data:/app/data \
-            telegram-bot-tile-storage:latest
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+      - name: Install dependencies
+        run: python -m pip install -r requirements.txt
+      - name: Run tests
+        run: python -m unittest discover -s tests -v

@@ -1,5 +1,6 @@
 import asyncio
 import logging
+from ..backup_runtime import wait_for_processing
 from decimal import Decimal, InvalidOperation
 
 from telegram.ext import (
@@ -93,10 +94,7 @@ async def regenerate_output(
             None,
             False,
         )
-        if PROCESS_TIMEOUT:
-            await asyncio.wait_for(task, timeout=PROCESS_TIMEOUT)
-        else:
-            await task
+        await wait_for_processing(task, PROCESS_TIMEOUT)
         await send_text(
             update,
             f"{note_prefix}\nخروجی بروزرسانی شد.",

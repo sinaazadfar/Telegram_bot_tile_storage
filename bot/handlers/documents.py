@@ -1,5 +1,6 @@
 import asyncio
 import logging
+from ..backup_runtime import wait_for_processing
 import time
 from io import BytesIO
 from pathlib import Path
@@ -64,10 +65,7 @@ async def handle_document(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
             None,
             False,
         )
-        if PROCESS_TIMEOUT:
-            await asyncio.wait_for(processing_task, timeout=PROCESS_TIMEOUT)
-        else:
-            await processing_task
+        await wait_for_processing(processing_task, PROCESS_TIMEOUT)
         logging.info("Processing done. Uploading output.")
         output_bytes = output_path.read_bytes()
         buffer = BytesIO(output_bytes)
